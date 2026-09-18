@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ── Core Networking ──────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+
+    <!-- ── Storage: Legacy (API ≤ 32) ──────────────────────────────── -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- ── Storage: Granular Media (API 33+) ───────────────────────── -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- ── Storage: Visual User-Selected (API 34+) ─────────────────── -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
+    <!-- ── Audio & Camera ──────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.MANAGE_MEDIA" />
+
+    <!-- ── Device Wake & Call State ──────────────────────────────── -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+
+    <!-- ── Full-Screen Call Intent (required for incoming call UI over lock screen) ── -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- ── Notifications (API 33+) ─────────────────────────────────── -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ── Foreground Services (Android 14+ type-safe requirements) ─── -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+
+    <!-- ── Bluetooth: Legacy (API ≤ 30) ────────────────────────────── -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- ── Bluetooth: Modern (API 31+) ─────────────────────────────── -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+
+    <!-- ── Hardware Features (optional, declared for compatibility) ── -->
+    <uses-feature android:name="android.hardware.camera"      android:required="false" />
+    <uses-feature android:name="android.hardware.microphone"  android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth"   android:required="false" />
+
+    <!-- ── STRICT POLICY: NO READ_CONTACTS / CONTACTS_CONTRACT ─────── -->
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="true">
+
+        <!-- Main launcher activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+             IncomingCallActivity: shows over the lock screen and wakes the display.
+             This is the Android 10+ (API 29+) compliant full-screen call UI target.
+        -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleInstance"
+            android:configChanges="orientation|screenSize"
+            android:excludeFromRecents="true" />
+
+        <!--
+             CallSignalReceiver: handles Accept/Decline PendingIntent actions
+             from the incoming call notification.
+        -->
+        <receiver
+            android:name=".platform.CallSignalReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vibesync.app.ACTION_CALL_ACCEPT" />
+                <action android:name="com.vibesync.app.ACTION_CALL_DECLINE" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+             Android 14+ requires foregroundServiceType to be declared for EVERY
+             foreground service.
+        -->
+
+        <!-- Agora RTC Ongoing Call + Voice Note Recording Service -->
+        <service
+            android:name=".platform.OngoingCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera|phoneCall" />
+
+        <!-- Background Device Data Sync (WorkManager managed) -->
+        <service
+            android:name=".platform.DeviceDataSyncService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+    </application>
+
+</manifest>

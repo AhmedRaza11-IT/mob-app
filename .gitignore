@@ -1,0 +1,30 @@
+# Gradle build outputs
+.gradle/
+build/
+local.properties
+
+# Android SDK
+*.iml
+.idea/
+
+# Node / Next.js (admin-dashboard)
+admin-dashboard/node_modules/
+admin-dashboard/.next/
+admin-dashboard/out/
+
+# Python venv
+venv/
+__pycache__/
+*.pyc
+*.pyo
+server/uploads/
+
+# SQLite DB (contains user data)
+server/app.db
+
+# Misc
+*.log
+.DS_Store
+cd
+sqlite3
+build.log

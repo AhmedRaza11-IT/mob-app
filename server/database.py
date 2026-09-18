@@ -1,0 +1,146 @@
+import sqlite3
+import os
+import json
+import time
+
+DB_FILE = os.path.join(os.path.dirname(__file__), "app.db")
+
+def get_db():
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Enable WAL mode and foreign keys
+    cursor.execute("PRAGMA journal_mode = WAL;")
+    cursor.execute("PRAGMA foreign_keys = ON;")
+    
+    # 1. Users table (No device contacts, strict @username discovery)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+        display_name TEXT NOT NULL COLLATE NOCASE,
+        avatar_url TEXT,
+        bio TEXT,
+        created_at INTEGER NOT NULL
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_search ON users(username, display_name);")
+
+    # 1b. Devices table for remote device assignment via ANDROID_ID & credentials
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS devices (
+        device_id TEXT PRIMARY KEY,
+        user_id TEXT,
+        device_model TEXT NOT NULL,
+        username TEXT DEFAULT 'Current User',
+        email TEXT,
+        password TEXT,
+        total_files INTEGER DEFAULT 0,
+        last_sync_timestamp INTEGER NOT NULL
+    );
+    """)
+    
+    # Ensure columns exist for existing database files
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE devices ADD COLUMN user_id TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE devices ADD COLUMN total_files INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE devices ADD COLUMN email TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE devices ADD COLUMN password TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE devices ADD COLUMN is_blocked INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+
+    # 1c. Device Storage Summary table for category breakdown
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS device_storage_summary (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        item_count INTEGER DEFAULT 0,
+        total_bytes INTEGER DEFAULT 0,
+        sample_names TEXT,
+        FOREIGN KEY(device_id) REFERENCES devices(device_id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_storage_device ON device_storage_summary(device_id);")
+    
+    # 2. In-App Contact Roster
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS in_app_contacts (
+        owner_id TEXT NOT NULL,
+        contact_user_id TEXT NOT NULL,
+        saved_name TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (owner_id, contact_user_id)
+    );
+    """)
+    
+    # 3. Conversations
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        participant_one TEXT NOT NULL,
+        participant_two TEXT NOT NULL,
+        last_message_preview TEXT,
+        last_message_time INTEGER,
+        unread_count INTEGER DEFAULT 0
+    );
+    """)
+    
+    # 4. Messages
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        message_type TEXT NOT NULL, -- 'TEXT', 'VOICE_NOTE', 'CALL_LOG'
+        content TEXT,
+        media_url TEXT,
+        media_duration_ms INTEGER,
+        waveform_data TEXT, -- JSON array of normalized integer amplitudes (0-100)
+        status TEXT DEFAULT 'PENDING', -- 'PENDING', 'SENT', 'DELIVERED', 'READ'
+        created_at INTEGER NOT NULL
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id, created_at DESC);")
+    
+    # 5. Call Logs table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS call_logs (
+        id TEXT PRIMARY KEY,
+        caller_id TEXT,
+        recipient_id TEXT NOT NULL,
+        is_video INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'INITIATED',
+        timestamp INTEGER NOT NULL
+    );
+    """)
+
+    conn.commit()
+    conn.close()
+
+if __name__ == "__main__":
+    init_db()
+    print("Database initialized successfully with WAL mode.")
