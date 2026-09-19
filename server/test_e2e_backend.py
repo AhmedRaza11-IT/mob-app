@@ -97,3 +97,44 @@ async def test_admin_moderation_update_and_delete():
         del_resp = await client.delete(f"/api/users/{user_id}")
         assert del_resp.status_code == 200
         assert del_resp.json()["status"] == "success"
+
+@pytest.mark.asyncio
+async def test_admin_messaging_and_calling_endpoints():
+    async with httpx.AsyncClient(base_url=BASE_URL) as client:
+        # 1. Send message from admin to user
+        msg_resp = await client.post("/api/admin/messages/send", json={
+            "recipient_id": "alice",
+            "content": "Hello Alice from Admin Portal!",
+            "message_type": "TEXT"
+        })
+        assert msg_resp.status_code == 200
+        msg_data = msg_resp.json()
+        assert msg_data["status"] == "success"
+        assert msg_data["message"]["sender_id"] == "admin"
+        assert msg_data["message"]["content"] == "Hello Alice from Admin Portal!"
+
+        # 2. Fetch admin conversation history with alice
+        conv_resp = await client.get("/api/admin/messages/alice")
+        assert conv_resp.status_code == 200
+        messages = conv_resp.json()
+        assert isinstance(messages, list)
+        assert any(m["content"] == "Hello Alice from Admin Portal!" for m in messages)
+
+        # 3. Admin initiates call
+        call_resp = await client.post("/api/admin/calls/initiate", json={
+            "recipient_id": "alice",
+            "is_video": True
+        })
+        assert call_resp.status_code == 200
+        call_data = call_resp.json()
+        assert call_data["status"] == "success"
+        assert "channel_name" in call_data
+        assert call_data["is_video"] is True
+
+        # 4. Admin ends call
+        end_resp = await client.post("/api/admin/calls/end", json={
+            "recipient_id": "alice",
+            "channel_name": call_data["channel_name"]
+        })
+        assert end_resp.status_code == 200
+        assert end_resp.json()["status"] == "success"

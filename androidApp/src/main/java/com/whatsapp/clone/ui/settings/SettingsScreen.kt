@@ -23,6 +23,11 @@ import com.whatsapp.clone.ui.settings.components.SettingsCategoryHeader
 import com.whatsapp.clone.ui.settings.components.SettingsItem
 import com.whatsapp.clone.ui.settings.navigation.SettingsRoute
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -30,6 +35,8 @@ fun SettingsScreen(
     onNavigate: (SettingsRoute) -> Unit,
     username: String = "VibeSync User"
 ) {
+    var showServerDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -176,6 +183,17 @@ fun SettingsScreen(
                 )
             }
 
+            // ── Server & Network ───────────────────────────────────────────────
+            item { SettingsCategoryHeader("Server & Network") }
+            item {
+                SettingsItem(
+                    icon = Icons.Default.CloudSync,
+                    title = "Server Connection",
+                    subtitle = com.whatsapp.clone.config.NetworkConfig.getBaseUrl(),
+                    onClick = { showServerDialog = true }
+                )
+            }
+
             // ── Help ──────────────────────────────────────────────────────────
             item { SettingsCategoryHeader("Support") }
             item {
@@ -199,5 +217,12 @@ fun SettingsScreen(
 
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
+    }
+
+    if (showServerDialog) {
+        com.whatsapp.clone.config.ServerConfigDialog(
+            onDismiss = { showServerDialog = false },
+            onConfigChanged = { showServerDialog = false }
+        )
     }
 }

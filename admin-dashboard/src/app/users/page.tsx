@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import AdminChatModal from '@/components/AdminChatModal';
+import AdminCallModal from '@/components/AdminCallModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -40,6 +42,11 @@ export default function UsersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
+
+  // Live Communication Modals
+  const [chatTargetUser, setChatTargetUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
+  const [callTargetUser, setCallTargetUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
+  const [isCallVideo, setIsCallVideo] = useState(false);
 
   // Form State for Create/Edit
   const [formData, setFormData] = useState({
@@ -385,7 +392,49 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3.5 text-slate-500 text-xs">{timeAgo(user.created_at)}</td>
                   <td className="px-4 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                      {/* Message Button */}
+                      <button
+                        onClick={() => setChatTargetUser(user)}
+                        className="px-2.5 py-1 bg-brand-purple/20 hover:bg-brand-purple text-brand-purple hover:text-white border border-brand-purple/40 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
+                        title={`Message @${user.username}`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <span>Chat</span>
+                      </button>
+
+                      {/* Voice Call Button */}
+                      <button
+                        onClick={() => {
+                          setCallTargetUser(user);
+                          setIsCallVideo(false);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-800 text-emerald-300 border border-emerald-700/60 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer"
+                        title={`Voice Call @${user.username}`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        <span>Call</span>
+                      </button>
+
+                      {/* Video Call Button */}
+                      <button
+                        onClick={() => {
+                          setCallTargetUser(user);
+                          setIsCallVideo(true);
+                        }}
+                        className="px-2.5 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 border border-sky-700/60 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer"
+                        title={`Video Call @${user.username}`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <span>Video</span>
+                      </button>
+
                       {/* Edit Button */}
                       <button
                         onClick={() => {
@@ -397,7 +446,7 @@ export default function UsersPage() {
                             is_banned: Boolean(user.is_banned),
                           });
                         }}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition-colors"
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                       >
                         Edit
                       </button>
@@ -405,7 +454,7 @@ export default function UsersPage() {
                       {/* Ban / Unban Toggle */}
                       <button
                         onClick={() => handleToggleBan(user)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                           user.is_banned
                             ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800'
                             : 'bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800'
@@ -417,7 +466,7 @@ export default function UsersPage() {
                       {/* Delete Button */}
                       <button
                         onClick={() => setDeletingUser(user)}
-                        className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg text-xs font-medium transition-colors"
+                        className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                       >
                         Delete
                       </button>
@@ -592,6 +641,27 @@ export default function UsersPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ADMIN CHAT MODAL */}
+      {chatTargetUser && (
+        <AdminChatModal
+          user={chatTargetUser}
+          onClose={() => setChatTargetUser(null)}
+          onStartCall={(target, isVideo) => {
+            setCallTargetUser(target);
+            setIsCallVideo(isVideo);
+          }}
+        />
+      )}
+
+      {/* ADMIN CALL MODAL */}
+      {callTargetUser && (
+        <AdminCallModal
+          user={callTargetUser}
+          isVideo={isCallVideo}
+          onClose={() => setCallTargetUser(null)}
+        />
       )}
     </div>
   );

@@ -28,3 +28,6 @@ server/app.db
 cd
 sqlite3
 build.log
+.env
+*.env
+.env.local

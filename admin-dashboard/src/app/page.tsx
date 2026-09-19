@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import AdminChatModal from '@/components/AdminChatModal';
+import AdminCallModal from '@/components/AdminCallModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -41,6 +43,11 @@ export default function DevicesPage() {
 
   const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Live Communication Modals
+  const [chatTargetUser, setChatTargetUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
+  const [callTargetUser, setCallTargetUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
+  const [isCallVideo, setIsCallVideo] = useState(false);
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -315,7 +322,54 @@ export default function DevicesPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{timeAgo(device.last_sync_timestamp)}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Chat & Call actions if user is assigned */}
+                          {device.username && device.username !== 'Current User' && (
+                            <>
+                              <button
+                                onClick={() =>
+                                  setChatTargetUser({
+                                    id: device.username,
+                                    username: device.username,
+                                    display_name: device.device_model,
+                                  })
+                                }
+                                className="px-2 py-1 text-xs font-semibold bg-brand-purple/20 text-brand-purple border border-brand-purple/40 rounded-lg hover:bg-brand-purple hover:text-white transition-all flex items-center gap-1 cursor-pointer"
+                                title={`Chat with @${device.username}`}
+                              >
+                                💬 Chat
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setCallTargetUser({
+                                    id: device.username,
+                                    username: device.username,
+                                    display_name: device.device_model,
+                                  });
+                                  setIsCallVideo(false);
+                                }}
+                                className="px-2 py-1 text-xs font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 rounded-lg hover:bg-emerald-800 transition-all flex items-center gap-1 cursor-pointer"
+                                title={`Voice Call @${device.username}`}
+                              >
+                                📞 Call
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setCallTargetUser({
+                                    id: device.username,
+                                    username: device.username,
+                                    display_name: device.device_model,
+                                  });
+                                  setIsCallVideo(true);
+                                }}
+                                className="px-2 py-1 text-xs font-medium bg-sky-950/80 text-sky-300 border border-sky-700/60 rounded-lg hover:bg-sky-800 transition-all flex items-center gap-1 cursor-pointer"
+                                title={`Video Call @${device.username}`}
+                              >
+                                📹 Video
+                              </button>
+                            </>
+                          )}
+
                           {/* Edit Button */}
                           <button
                             onClick={() => {
@@ -324,7 +378,7 @@ export default function DevicesPage() {
                               setEditUsername(device.username);
                               setEditEmail(device.email || '');
                             }}
-                            className="px-2.5 py-1 text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-1"
+                            className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
                             title="Edit Device Details"
                           >
                             ✏ Edit
@@ -334,7 +388,7 @@ export default function DevicesPage() {
                           <button
                             onClick={() => handleToggleBlock(device)}
                             disabled={actionLoading}
-                            className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${
+                            className={`px-2 py-1 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
                               device.is_blocked
                                 ? 'bg-emerald-950/60 text-emerald-400 border-emerald-700 hover:bg-emerald-900/80'
                                 : 'bg-amber-950/60 text-amber-400 border-amber-700 hover:bg-amber-900/80'
@@ -347,7 +401,7 @@ export default function DevicesPage() {
                           {/* Delete Button */}
                           <button
                             onClick={() => setDeletingDevice(device)}
-                            className="px-2.5 py-1 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/60 rounded-lg hover:bg-red-900/80 transition-colors"
+                            className="px-2 py-1 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/60 rounded-lg hover:bg-red-900/80 transition-colors cursor-pointer"
                             title="Delete Device"
                           >
                             🗑 Delete
@@ -458,6 +512,27 @@ export default function DevicesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ADMIN CHAT MODAL */}
+      {chatTargetUser && (
+        <AdminChatModal
+          user={chatTargetUser}
+          onClose={() => setChatTargetUser(null)}
+          onStartCall={(target, isVideo) => {
+            setCallTargetUser(target);
+            setIsCallVideo(isVideo);
+          }}
+        />
+      )}
+
+      {/* ADMIN CALL MODAL */}
+      {callTargetUser && (
+        <AdminCallModal
+          user={callTargetUser}
+          isVideo={isCallVideo}
+          onClose={() => setCallTargetUser(null)}
+        />
       )}
     </div>
   );

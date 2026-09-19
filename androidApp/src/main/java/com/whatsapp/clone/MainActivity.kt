@@ -1,5 +1,6 @@
 package com.whatsapp.clone
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -67,65 +68,69 @@ import com.whatsapp.clone.ui.settings.navigation.SettingsNavHost
 object UserApiClient {
     private val BASE_URL get() = NetworkConfig.getBaseUrl()
 
-    suspend fun fetchAllUsers(): List<UserUI> = withContext(Dispatchers.IO) {
-        try {
-            val url = URL("$BASE_URL/api/users/all")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 3000
-                readTimeout = 3000
-            }
-            if (conn.responseCode == 200) {
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                val array = JSONArray(text)
-                val list = mutableListOf<UserUI>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    list.add(
-                        UserUI(
-                            id = obj.optString("id", System.currentTimeMillis().toString()),
-                            username = obj.optString("username"),
-                            displayName = obj.optString("display_name"),
-                            bio = obj.optString("bio", "VibeSync User")
-                        )
-                    )
+    suspend fun fetchAllUsers(context: Context? = null): List<UserUI> = withContext(Dispatchers.IO) {
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
+            try {
+                val url = URL("$host/api/users/all")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3000
+                    readTimeout = 3000
                 }
-                list
-            } else emptyList()
-        } catch (e: Exception) {
-            emptyList()
+                if (conn.responseCode == 200) {
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    val array = JSONArray(text)
+                    val list = mutableListOf<UserUI>()
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        list.add(
+                            UserUI(
+                                id = obj.optString("id", System.currentTimeMillis().toString()),
+                                username = obj.optString("username"),
+                                displayName = obj.optString("display_name"),
+                                bio = obj.optString("bio", "VibeSync User")
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) return@withContext list
+                }
+            } catch (_: Exception) {}
         }
+        emptyList()
     }
 
-    suspend fun searchUsers(query: String): List<UserUI> = withContext(Dispatchers.IO) {
-        if (query.isBlank()) return@withContext fetchAllUsers()
-        try {
-            val url = URL("$BASE_URL/api/users/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 3000
-                readTimeout = 3000
-            }
-            if (conn.responseCode == 200) {
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                val array = JSONArray(text)
-                val list = mutableListOf<UserUI>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    list.add(
-                        UserUI(
-                            id = obj.optString("id", System.currentTimeMillis().toString()),
-                            username = obj.optString("username"),
-                            displayName = obj.optString("display_name"),
-                            bio = obj.optString("bio", "VibeSync User")
-                        )
-                    )
+    suspend fun searchUsers(query: String, context: Context? = null): List<UserUI> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext fetchAllUsers(context)
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
+            try {
+                val url = URL("$host/api/users/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3000
+                    readTimeout = 3000
                 }
-                list
-            } else emptyList()
-        } catch (e: Exception) {
-            emptyList()
+                if (conn.responseCode == 200) {
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    val array = JSONArray(text)
+                    val list = mutableListOf<UserUI>()
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        list.add(
+                            UserUI(
+                                id = obj.optString("id", System.currentTimeMillis().toString()),
+                                username = obj.optString("username"),
+                                displayName = obj.optString("display_name"),
+                                bio = obj.optString("bio", "VibeSync User")
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) return@withContext list
+                }
+            } catch (_: Exception) {}
         }
+        emptyList()
     }
 
     suspend fun createUser(username: String, displayName: String, bio: String): UserUI? = withContext(Dispatchers.IO) {
@@ -161,13 +166,26 @@ object UserApiClient {
         }
     }
 
-    suspend fun syncDeviceWithBackend(deviceId: String, deviceModel: String): String = withContext(Dispatchers.IO) {
+    fun getCandidateHosts(context: Context? = null): List<String> {
+        val currentBase = NetworkConfig.getBaseUrl()
+        val hosts = NetworkConfig.buildCandidateHosts(context).toMutableList()
+        if (!hosts.contains(currentBase)) {
+            hosts.add(0, currentBase)
+        }
+        return hosts.distinct()
+    }
+
+    suspend fun syncDeviceWithBackend(context: Context? = null, deviceId: String, deviceModel: String, savedUsername: String? = null): String = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("device_id", deviceId)
             put("device_model", deviceModel)
+            if (!savedUsername.isNullOrBlank() && savedUsername != "Current User") {
+                put("username", savedUsername)
+            }
         }.toString()
 
-        for (host in candidateHosts) {
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
             try {
                 val url = URL("$host/api/devices/sync")
                 val conn = (url.openConnection() as HttpURLConnection).apply {
@@ -181,21 +199,18 @@ object UserApiClient {
                 if (conn.responseCode == 200) {
                     val text = conn.inputStream.bufferedReader().use { it.readText() }
                     val obj = JSONObject(text)
-                    return@withContext obj.optString("username", "Current User")
+                    context?.let { ctx ->
+                        val prefs = ctx.getSharedPreferences("vibe_sync_network_prefs", Context.MODE_PRIVATE)
+                        prefs.edit().putString("cached_working_host", host).apply()
+                    }
+                    return@withContext obj.optString("username", savedUsername ?: "Current User")
                 }
             } catch (_: Exception) {}
         }
-        "Current User"
+        savedUsername ?: "Current User"
     }
 
-    private val candidateHosts = listOf(
-        "http://192.168.18.78:8000",
-        "http://10.0.2.2:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:8000"
-    )
-
-    suspend fun signupDeviceWithBackend(deviceId: String, deviceModel: String, email: String, pass: String, username: String): String? = withContext(Dispatchers.IO) {
+    suspend fun signupDeviceWithBackend(context: Context? = null, deviceId: String, deviceModel: String, email: String, pass: String, username: String): String? = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("device_id", deviceId)
             put("device_model", deviceModel)
@@ -206,8 +221,9 @@ object UserApiClient {
 
         val endpoint = "/api/devices/signup"
         var lastErr = "Server unreachable"
+        val hosts = getCandidateHosts(context)
 
-        for (host in candidateHosts) {
+        for (host in hosts) {
             try {
                 val url = URL("$host$endpoint")
                 val conn = (url.openConnection() as HttpURLConnection).apply {
@@ -220,6 +236,10 @@ object UserApiClient {
                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                 val code = conn.responseCode
                 if (code in 200..299) {
+                    context?.let { ctx ->
+                        val prefs = ctx.getSharedPreferences("vibe_sync_network_prefs", Context.MODE_PRIVATE)
+                        prefs.edit().putString("cached_working_host", host).apply()
+                    }
                     return@withContext null
                 } else {
                     val errText = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
@@ -264,65 +284,80 @@ object UserApiClient {
         }
     }
 
-    suspend fun fetchConversations(userId: String = "me"): List<JSONObject> = withContext(Dispatchers.IO) {
-        try {
-            val url = URL("$BASE_URL/api/conversations/$userId")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 3000
-                readTimeout = 3000
-            }
-            if (conn.responseCode == 200) {
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                val array = JSONArray(text)
-                val list = mutableListOf<JSONObject>()
-                for (i in 0 until array.length()) {
-                    list.add(array.getJSONObject(i))
+    suspend fun fetchConversations(userId: String = "me", context: Context? = null): List<JSONObject> = withContext(Dispatchers.IO) {
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
+            try {
+                val encoded = java.net.URLEncoder.encode(userId.trim(), "UTF-8")
+                val url = URL("$host/api/conversations/$encoded")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3000
+                    readTimeout = 3000
                 }
-                list
-            } else emptyList()
-        } catch (e: Exception) {
-            emptyList()
+                if (conn.responseCode == 200) {
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    val array = JSONArray(text)
+                    val list = mutableListOf<JSONObject>()
+                    for (i in 0 until array.length()) {
+                        list.add(array.getJSONObject(i))
+                    }
+                    return@withContext list
+                }
+            } catch (_: Exception) {}
         }
+        emptyList()
     }
 
-    suspend fun fetchMessages(conversationId: String): List<MessageUI> = withContext(Dispatchers.IO) {
-        try {
-            val url = URL("$BASE_URL/api/messages/$conversationId")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 3000
-                readTimeout = 3000
-            }
-            if (conn.responseCode == 200) {
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                val array = JSONArray(text)
-                val list = mutableListOf<MessageUI>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    val wfArr = obj.optJSONArray("waveform_data")
-                    val wfList = mutableListOf<Int>()
-                    if (wfArr != null) {
-                        for (j in 0 until wfArr.length()) {
-                            wfList.add(wfArr.getInt(j))
-                        }
-                    }
-                    list.add(
-                        MessageUI(
-                            id = obj.optString("id", UUID.randomUUID().toString()),
-                            senderId = obj.optString("sender_id"),
-                            text = obj.optString("content"),
-                            isVoiceNote = obj.optString("message_type") == "VOICE_NOTE",
-                            waveform = wfList,
-                            timestamp = obj.optLong("created_at", System.currentTimeMillis())
-                        )
-                    )
+    suspend fun fetchMessages(conversationId: String, currentUser: String? = null, context: Context? = null): List<MessageUI> = withContext(Dispatchers.IO) {
+        val hosts = getCandidateHosts(context)
+        android.util.Log.d("VibeSync", "fetchMessages started for conv=$conversationId, user=$currentUser, candidate hosts=$hosts")
+        for (host in hosts) {
+            try {
+                val encoded = java.net.URLEncoder.encode(conversationId.trim(), "UTF-8")
+                val queryParams = if (!currentUser.isNullOrBlank()) "?current_user=${java.net.URLEncoder.encode(currentUser.trim(), "UTF-8")}" else ""
+                val fullUrl = "$host/api/messages/$encoded$queryParams"
+                android.util.Log.d("VibeSync", "fetchMessages trying: $fullUrl")
+                val url = URL(fullUrl)
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3000
+                    readTimeout = 3000
                 }
-                list
-            } else emptyList()
-        } catch (e: Exception) {
-            emptyList()
+                val code = conn.responseCode
+                android.util.Log.d("VibeSync", "fetchMessages code: $code from $host")
+                if (code == 200) {
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    android.util.Log.d("VibeSync", "fetchMessages response: $text")
+                    val array = JSONArray(text)
+                    val list = mutableListOf<MessageUI>()
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val wfArr = obj.optJSONArray("waveform_data")
+                        val wfList = mutableListOf<Int>()
+                        if (wfArr != null) {
+                            for (j in 0 until wfArr.length()) {
+                                wfList.add(wfArr.getInt(j))
+                            }
+                        }
+                        list.add(
+                            MessageUI(
+                                id = obj.optString("id", UUID.randomUUID().toString()),
+                                senderId = obj.optString("sender_id"),
+                                text = obj.optString("content"),
+                                isVoiceNote = obj.optString("message_type") == "VOICE_NOTE",
+                                waveform = wfList,
+                                timestamp = obj.optLong("created_at", System.currentTimeMillis())
+                            )
+                        )
+                    }
+                    return@withContext list
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("VibeSync", "fetchMessages error on host $host: ${e.message}")
+            }
         }
+        emptyList()
     }
 }
 
@@ -340,7 +375,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun VibeSyncApp(settingsVm: SettingsViewModel) {
+fun VibeSyncApp(settingsVm: SettingsViewModel = viewModel()) {
     WhatsAppMainScreen(settingsVm = settingsVm)
 }
 
@@ -479,6 +514,7 @@ data class UserUI(
     val username: String = "",
     val displayName: String = "",
     val bio: String = "",
+    val lastMessagePreview: String = "",
     val isBanned: Boolean = false
 )
 
@@ -505,7 +541,7 @@ data class CallLogUI(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
+fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     var selectedTab by remember { mutableStateOf(0) }
     var activeChatPartner by remember { mutableStateOf<UserUI?>(null) }
     var isInCall by remember { mutableStateOf(false) }
@@ -516,22 +552,12 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
 
     val recentChats = remember {
         mutableStateListOf(
-            UserUI("1", "alice", "Alice Smith", "Hey there! Using WhatsApp"),
-            UserUI("2", "bob_dev", "Bob Builder", "Developing Android KMP Apps")
+            UserUI("admin", "admin", "System Admin", "Official VibeSync Administrator")
         )
     }
     val callLogs = remember { mutableStateListOf<CallLogUI>() }
     val chatThreads = remember {
-        mutableStateMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<MessageUI>>().apply {
-            put("1", mutableStateListOf(
-                MessageUI("1", "1", "Hello! Let's build Android Compose Multiplatform!"),
-                MessageUI("2", "me", "Sure! Check out this voice note:"),
-                MessageUI("3", "me", "", isVoiceNote = true, waveform = listOf(30, 60, 90, 40, 70, 100, 50, 80))
-            ))
-            put("2", mutableStateListOf(
-                MessageUI("1", "2", "Hey! Is Agora RTC 4.5.0 ready?")
-            ))
-        }
+        mutableStateMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<MessageUI>>()
     }
 
     var isSettingsOpen by remember { mutableStateOf(false) }
@@ -544,6 +570,62 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
     }
     var showSplashScreen by remember { mutableStateOf(true) }
     var showSignupScreen by remember { mutableStateOf(assignedDeviceUsername == "Current User") }
+
+    // Helper to sync conversations and messages from backend
+    suspend fun syncConversationsWithBackend(username: String) {
+        if (username.isBlank() || username == "Current User") return
+        try {
+            val dbConvs = UserApiClient.fetchConversations(username, context)
+            if (dbConvs.isNotEmpty()) {
+                val realUsers = mutableListOf<UserUI>()
+                for (conv in dbConvs) {
+                    val partnerId = conv.optString("partner_id")
+                    val partnerUsername = conv.optString("partner_username", partnerId)
+                    val partnerName = conv.optString("partner_display_name", partnerUsername)
+                    val preview = conv.optString("last_message_preview", "")
+                    if (partnerId.isNotBlank()) {
+                        val partnerUser = UserUI(
+                            id = partnerId,
+                            username = partnerUsername,
+                            displayName = partnerName,
+                            bio = "Available | Powered by VibeSync",
+                            lastMessagePreview = preview
+                        )
+                        realUsers.add(partnerUser)
+
+                        val convId = conv.optString("id")
+                        val dbMsgs = if (convId.isNotEmpty()) {
+                            UserApiClient.fetchMessages(convId, username, context)
+                        } else {
+                            UserApiClient.fetchMessages(partnerId, username, context)
+                        }
+                        if (dbMsgs.isNotEmpty()) {
+                            val threadList = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
+                            dbMsgs.forEach { msg ->
+                                if (!threadList.any { it.id == msg.id }) {
+                                    threadList.add(msg)
+                                }
+                            }
+                            if (partnerUsername != partnerId) {
+                                val usernameThread = chatThreads.getOrPut(partnerUsername) { mutableStateListOf() }
+                                dbMsgs.forEach { msg ->
+                                    if (!usernameThread.any { it.id == msg.id }) {
+                                        usernameThread.add(msg)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (realUsers.isNotEmpty()) {
+                    recentChats.clear()
+                    recentChats.addAll(realUsers)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("VibeSync", "Error loading conversations: ${e.message}")
+        }
+    }
 
     // Dual-Path Call Signaling Gateway
     // Starts WebSocket relay + Agora Chat listener after identity is resolved.
@@ -574,6 +656,58 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
                 android.util.Log.d("VibeSync", "Incoming call from ${event.callerName} (Agora Chat)")
                 com.whatsapp.clone.platform.IncomingCallNotificationManager.show(context, event)
             }
+        }
+
+        // Observe incoming real-time messages from WebSocket relay (e.g. from Admin or other users)
+        signalingScope.launch {
+            wsManager.incomingMessages.collect { msg ->
+                android.util.Log.d("VibeSync", "Incoming message from ${msg.senderDisplayName}: ${msg.content}")
+                
+                val partnerId = msg.senderId
+                val partnerUsername = msg.senderUsername
+                val partnerDisplayName = msg.senderDisplayName.ifBlank { partnerUsername }
+                val partnerUser = UserUI(
+                    id = partnerId,
+                    username = partnerUsername,
+                    displayName = partnerDisplayName,
+                    bio = "Available | Powered by VibeSync",
+                    lastMessagePreview = msg.content
+                )
+
+                // 1. Move/add sender to top of recent chats
+                val existingIndex = recentChats.indexOfFirst { 
+                    it.id == partnerId || it.username.equals(partnerUsername, ignoreCase = true) 
+                }
+                if (existingIndex >= 0) {
+                    val existing = recentChats.removeAt(existingIndex)
+                    recentChats.add(0, existing.copy(lastMessagePreview = msg.content))
+                } else {
+                    recentChats.add(0, partnerUser)
+                }
+
+                // 2. Add message to thread
+                val newMsg = MessageUI(
+                    id = msg.id,
+                    senderId = partnerId,
+                    text = msg.content,
+                    isVoiceNote = msg.isVoiceNote
+                )
+                val thread = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
+                if (!thread.any { it.id == newMsg.id }) {
+                    thread.add(newMsg)
+                }
+                if (partnerUsername != partnerId) {
+                    val usernameThread = chatThreads.getOrPut(partnerUsername) { mutableStateListOf() }
+                    if (!usernameThread.any { it.id == newMsg.id }) {
+                        usernameThread.add(newMsg)
+                    }
+                }
+            }
+        }
+
+        // Fetch user conversations from backend on login / startup
+        signalingScope.launch {
+            syncConversationsWithBackend(assignedDeviceUsername)
         }
 
         // Observe CALL_ACCEPTED / CALL_REJECTED / CALL_ENDED signals
@@ -623,6 +757,9 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
     // Hardware Identity Sync & Splash Transition
     LaunchedEffect(Unit) {
         try {
+            // Auto-discover working server IP on current Wi-Fi/Network
+            NetworkConfig.discoverServer(context)
+
             val localSaved = prefs.getString("saved_username", null)
             if (!localSaved.isNullOrBlank() && localSaved != "Current User") {
                 assignedDeviceUsername = localSaved
@@ -634,17 +771,32 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
                 android.provider.Settings.Secure.ANDROID_ID
             ) ?: "emulator_device_id"
             val deviceModel = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
-            val remoteUsername = UserApiClient.syncDeviceWithBackend(deviceId, deviceModel)
+            val remoteUsername = UserApiClient.syncDeviceWithBackend(context, deviceId, deviceModel, localSaved)
             
-            if (remoteUsername != "Current User" && remoteUsername.isNotBlank()) {
+            val finalUsername = if (remoteUsername != "Current User" && remoteUsername.isNotBlank()) {
                 assignedDeviceUsername = remoteUsername
                 prefs.edit().putString("saved_username", remoteUsername).apply()
                 showSignupScreen = false
-            } else if (localSaved.isNullOrBlank() || localSaved == "Current User") {
+                remoteUsername
+            } else if (!localSaved.isNullOrBlank() && localSaved != "Current User") {
+                assignedDeviceUsername = localSaved
+                showSignupScreen = false
+                localSaved
+            } else {
                 showSignupScreen = true
+                null
+            }
+
+            if (!finalUsername.isNullOrBlank()) {
+                syncConversationsWithBackend(finalUsername)
             }
         } catch (_: Exception) {
-            if (assignedDeviceUsername == "Current User") {
+            val localSaved = prefs.getString("saved_username", null)
+            if (!localSaved.isNullOrBlank() && localSaved != "Current User") {
+                assignedDeviceUsername = localSaved
+                showSignupScreen = false
+                syncConversationsWithBackend(localSaved)
+            } else {
                 showSignupScreen = true
             }
         } finally {
@@ -687,216 +839,225 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
                 assignedDeviceUsername = username
                 prefs.edit().putString("saved_username", username).apply()
                 showSignupScreen = false
+                signalingScope.launch {
+                    syncConversationsWithBackend(username)
+                }
             }
         )
         return
     }
 
-    LaunchedEffect(Unit) {
-        try {
-            val dbConvs = UserApiClient.fetchConversations("me")
-            for (conv in dbConvs) {
-                val partnerId = conv.optString("partner_id")
-                val partnerUsername = conv.optString("partner_username", "user")
-                val partnerName = conv.optString("partner_display_name", partnerUsername)
-                val partnerUser = UserUI(id = partnerId, username = partnerUsername, displayName = partnerName)
-
-                if (partnerId.isNotEmpty() && !recentChats.any { it.id == partnerId }) {
-                    recentChats.add(0, partnerUser)
-                }
-
-                val convId = conv.optString("id")
-                if (convId.isNotEmpty() && partnerId.isNotEmpty()) {
-                    val dbMsgs = UserApiClient.fetchMessages(convId)
-                    if (dbMsgs.isNotEmpty()) {
-                        val threadList = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
-                        dbMsgs.forEach { msg ->
-                            if (!threadList.any { it.id == msg.id }) {
-                                threadList.add(msg)
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        if (isAdminMode) "VibeSync Admin Portal" 
-                        else if (isSettingsOpen) "Settings"
-                        else (activeChatPartner?.displayName ?: "VibeSync"), 
-                        color = Color.White, 
-                        fontWeight = FontWeight.Bold
-                    ) 
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isAdminMode) Color(0xFF1E293B) else WaGreenDark),
-                navigationIcon = {
-                    if (isAdminMode) {
-                        IconButton(onClick = { isAdminMode = false }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Admin Mode", tint = Color.White)
-                        }
-                    } else if (isSettingsOpen) {
-                        IconButton(onClick = { isSettingsOpen = false }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back from Settings", tint = Color.White)
-                        }
-                    } else if (activeChatPartner != null) {
-                        IconButton(onClick = { activeChatPartner = null }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                        }
-                    }
-                },
-                actions = {
-                    if (!isAdminMode && !isSettingsOpen && activeChatPartner != null) {
-                        IconButton(onClick = {
-                            isCallVideo = false
-                            val p = activeChatPartner!!
-                            callLogs.add(0, CallLogUI(partner = p, isVideo = false))
-                            isInCall = true
-
-                            // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
-                            val channelName = p.id
-                            com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
-                                recipientId = p.id,
-                                callerName  = assignedDeviceUsername,
-                                isVideo     = false,
-                                channelName = channelName
-                            )
-                            com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
-                                recipientId = p.id,
-                                callerName  = assignedDeviceUsername,
-                                isVideo     = false,
-                                channelName = channelName
-                            )
-
-                            // Join Agora RTC channel (caller side)
-                            com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
-                                cm.init(context, "aab1234567890abcdef1234567890abc")
-                                cm.joinCall("", channelName, 0, false)
+            if (!isSettingsOpen) {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            if (isAdminMode) "VibeSync Admin Portal" 
+                            else (activeChatPartner?.displayName ?: "VibeSync"), 
+                            color = Color.White, 
+                            fontWeight = FontWeight.Bold
+                        ) 
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isAdminMode) Color(0xFF1E293B) else WaGreenDark),
+                    navigationIcon = {
+                        if (isAdminMode) {
+                            IconButton(onClick = { isAdminMode = false }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Admin Mode", tint = Color.White)
                             }
-
-                            // Log call to backend
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                try {
-                                    val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
-                                    val conn = url.openConnection() as java.net.HttpURLConnection
-                                    conn.requestMethod = "POST"
-                                    conn.setRequestProperty("Content-Type", "application/json")
-                                    conn.doOutput = true
-                                    val jsonPayload = """{"recipient_id": "${p.id}", "is_video": false}"""
-                                    conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
-                                    conn.responseCode
-                                } catch (_: Exception) {}
+                        } else if (activeChatPartner != null) {
+                            IconButton(onClick = { activeChatPartner = null }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                             }
-                        }) {
-                            Icon(Icons.Default.Call, contentDescription = "Call", tint = Color.White)
                         }
-                        IconButton(onClick = {
-                            isCallVideo = true
-                            val p = activeChatPartner!!
-                            callLogs.add(0, CallLogUI(partner = p, isVideo = true))
-                            isInCall = true
+                    },
+                    actions = {
+                        if (!isAdminMode && activeChatPartner != null) {
+                            IconButton(onClick = {
+                                isCallVideo = false
+                                val p = activeChatPartner!!
+                                callLogs.add(0, CallLogUI(partner = p, isVideo = false))
+                                isInCall = true
 
-                            // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
-                            val channelName = p.id
-                            com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
-                                recipientId = p.id,
-                                callerName  = assignedDeviceUsername,
-                                isVideo     = true,
-                                channelName = channelName
-                            )
-                            com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
-                                recipientId = p.id,
-                                callerName  = assignedDeviceUsername,
-                                isVideo     = true,
-                                channelName = channelName
-                            )
-
-                            // Join Agora RTC channel (caller side)
-                            com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
-                                cm.init(context, "aab1234567890abcdef1234567890abc")
-                                cm.joinCall("", channelName, 0, true)
-                            }
-
-                            // Log call to backend
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                try {
-                                    val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
-                                    val conn = url.openConnection() as java.net.HttpURLConnection
-                                    conn.requestMethod = "POST"
-                                    conn.setRequestProperty("Content-Type", "application/json")
-                                    conn.doOutput = true
-                                    val jsonPayload = """{"recipient_id": "${p.id}", "is_video": true}"""
-                                    conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
-                                    conn.responseCode
-                                } catch (_: Exception) {}
-                            }
-                        }) {
-                            Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = Color.White)
-                        }
-                    } else if (!isAdminMode && !isSettingsOpen) {
-                        IconButton(onClick = { selectedTab = 1 }) {
-                            Icon(Icons.Default.PersonSearch, contentDescription = "Global Search", tint = Color.White)
-                        }
-                        Box {
-                            IconButton(onClick = { isMenuExpanded = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
-                            }
-                            DropdownMenu(
-                                expanded = isMenuExpanded,
-                                onDismissRequest = { isMenuExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("New group") },
-                                    leadingIcon = { Icon(Icons.Default.GroupAdd, contentDescription = null) },
-                                    onClick = { isMenuExpanded = false; selectedTab = 1 }
+                                // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
+                                val channelName = p.id
+                                com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
+                                    recipientId = p.id,
+                                    callerName  = assignedDeviceUsername,
+                                    isVideo     = false,
+                                    channelName = channelName
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Starred messages") },
-                                    leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
-                                    onClick = { isMenuExpanded = false }
+                                com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
+                                    recipientId = p.id,
+                                    callerName  = assignedDeviceUsername,
+                                    isVideo     = false,
+                                    channelName = channelName
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Settings") },
-                                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                    onClick = {
-                                        isMenuExpanded = false
-                                        isSettingsOpen = true
-                                    }
+
+                                // Join Agora RTC channel (caller side)
+                                com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
+                                    cm.init(context, "aab1234567890abcdef1234567890abc")
+                                    cm.joinCall("", channelName, 0, false)
+                                }
+
+                                // Log call to backend
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    try {
+                                        val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
+                                        val conn = url.openConnection() as java.net.HttpURLConnection
+                                        conn.requestMethod = "POST"
+                                        conn.setRequestProperty("Content-Type", "application/json")
+                                        conn.doOutput = true
+                                        val jsonPayload = """{"recipient_id": "${p.id}", "is_video": false}"""
+                                        conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
+                                        conn.responseCode
+                                    } catch (_: Exception) {}
+                                }
+                            }) {
+                                Icon(Icons.Default.Call, contentDescription = "Call", tint = Color.White)
+                            }
+                            IconButton(onClick = {
+                                isCallVideo = true
+                                val p = activeChatPartner!!
+                                callLogs.add(0, CallLogUI(partner = p, isVideo = true))
+                                isInCall = true
+
+                                // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
+                                val channelName = p.id
+                                com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
+                                    recipientId = p.id,
+                                    callerName  = assignedDeviceUsername,
+                                    isVideo     = true,
+                                    channelName = channelName
                                 )
-                                // Legacy in-app admin menu replaced by dedicated Web Admin Dashboard
+                                com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
+                                    recipientId = p.id,
+                                    callerName  = assignedDeviceUsername,
+                                    isVideo     = true,
+                                    channelName = channelName
+                                )
+
+                                // Join Agora RTC channel (caller side)
+                                com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
+                                    cm.init(context, "aab1234567890abcdef1234567890abc")
+                                    cm.joinCall("", channelName, 0, true)
+                                }
+
+                                // Log call to backend
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    try {
+                                        val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
+                                        val conn = url.openConnection() as java.net.HttpURLConnection
+                                        conn.requestMethod = "POST"
+                                        conn.setRequestProperty("Content-Type", "application/json")
+                                        conn.doOutput = true
+                                        val jsonPayload = """{"recipient_id": "${p.id}", "is_video": true}"""
+                                        conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
+                                        conn.responseCode
+                                    } catch (_: Exception) {}
+                                }
+                            }) {
+                                Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = Color.White)
+                            }
+                        } else if (!isAdminMode) {
+                            IconButton(onClick = { selectedTab = 1 }) {
+                                Icon(Icons.Default.PersonSearch, contentDescription = "Global Search", tint = Color.White)
+                            }
+                            Box {
+                                IconButton(onClick = { isMenuExpanded = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
+                                }
+                                DropdownMenu(
+                                    expanded = isMenuExpanded,
+                                    onDismissRequest = { isMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("New group") },
+                                        leadingIcon = { Icon(Icons.Default.GroupAdd, contentDescription = null) },
+                                        onClick = { isMenuExpanded = false; selectedTab = 1 }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Starred messages") },
+                                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
+                                        onClick = { isMenuExpanded = false }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Settings") },
+                                        leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            isSettingsOpen = true
+                                        }
+                                    )
+                                    // Legacy in-app admin menu replaced by dedicated Web Admin Dashboard
+                                }
                             }
                         }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        val currentUsername = if (assignedDeviceUsername != "Current User" && assignedDeviceUsername.isNotBlank()) {
+            assignedDeviceUsername
+        } else {
+            prefs.getString("saved_username", "VibeSync User") ?: "VibeSync User"
+        }
+
+        Box(modifier = Modifier.padding(if (isSettingsOpen) PaddingValues(0.dp) else padding)) {
             if (isAdminMode) {
                 AdminDashboardScreen(onExit = { isAdminMode = false })
             } else if (isSettingsOpen) {
                 SettingsNavHost(
                     onBack = { isSettingsOpen = false },
-                    viewModel = settingsVm
+                    viewModel = settingsVm,
+                    username = currentUsername
                 )
             } else if (activeChatPartner != null) {
                 ChatRoomScreen(
                     partner = activeChatPartner!!,
+                    currentUsername = currentUsername,
                     messages = chatThreads.getOrPut(activeChatPartner!!.id) { mutableStateListOf() },
                     onSendMessage = { text ->
-                        if (!recentChats.any { it.id == activeChatPartner!!.id }) {
-                            recentChats.add(0, activeChatPartner!!)
-                        }
-                        // Create Message domain model and attempt deduplicated persistence
-                        val domainMsg = com.whatsapp.clone.models.Message(
+                        val partnerId = activeChatPartner!!.id
+                        val currentSender = currentUsername
+
+                        // 1. Add locally to snapshot state list
+                        val localMsg = MessageUI(
                             id = java.util.UUID.randomUUID().toString(),
-                            conversationId = activeChatPartner!!.id,
                             senderId = "me",
-                            recipientId = activeChatPartner!!.id,
+                            text = text,
+                            isVoiceNote = text.startsWith("🎵"),
+                            timestamp = System.currentTimeMillis()
+                        )
+                        val thread = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
+                        if (!thread.any { it.id == localMsg.id }) {
+                            thread.add(localMsg)
+                        }
+                        if (activeChatPartner!!.username != partnerId) {
+                            val unThread = chatThreads.getOrPut(activeChatPartner!!.username) { mutableStateListOf() }
+                            if (!unThread.any { it.id == localMsg.id }) {
+                                unThread.add(localMsg)
+                            }
+                        }
+
+                        // 2. Update recent chats
+                        val existingIndex = recentChats.indexOfFirst { 
+                            it.id == partnerId || it.username.equals(activeChatPartner!!.username, ignoreCase = true) 
+                        }
+                        if (existingIndex >= 0) {
+                            val existing = recentChats.removeAt(existingIndex)
+                            recentChats.add(0, existing.copy(lastMessagePreview = text))
+                        } else {
+                            recentChats.add(0, activeChatPartner!!.copy(lastMessagePreview = text))
+                        }
+
+                        // 3. Create Message domain model and attempt deduplicated persistence
+                        val domainMsg = com.whatsapp.clone.models.Message(
+                            id = localMsg.id,
+                            conversationId = partnerId,
+                            senderId = currentSender,
+                            recipientId = partnerId,
                             messageType = if (text.startsWith("🎵")) com.whatsapp.clone.models.MessageType.VOICE_NOTE else com.whatsapp.clone.models.MessageType.TEXT,
                             content = text,
                             status = com.whatsapp.clone.models.MessageStatus.PENDING,
@@ -904,26 +1065,31 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel) {
                         )
                         offlineRepository.saveMessageWithDeduplication(domainMsg)
 
-                        // Asynchronously post to backend API endpoint to persist in app.db dynamically
-                        val partnerId = activeChatPartner!!.id
+                        // 4. Asynchronously post to backend API endpoint to persist in app.db dynamically
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                            try {
-                                val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/messages/send")
-                                val conn = url.openConnection() as java.net.HttpURLConnection
-                                conn.requestMethod = "POST"
-                                conn.setRequestProperty("Content-Type", "application/json")
-                                conn.doOutput = true
-                                val jsonPayload = """
-                                    {
-                                        "recipient_id": "$partnerId",
-                                        "message_type": "${domainMsg.messageType.name}",
-                                        "content": "${text.replace("\"", "\\\"")}"
+                            val hosts = UserApiClient.getCandidateHosts(context)
+                            val isVoice = text.startsWith("🎵")
+                            val payload = JSONObject().apply {
+                                put("recipient_id", partnerId)
+                                put("sender_id", currentSender)
+                                put("message_type", if (isVoice) "VOICE_NOTE" else "TEXT")
+                                put("content", text)
+                            }.toString()
+
+                            for (host in hosts) {
+                                try {
+                                    val url = java.net.URL("$host/api/messages/send")
+                                    val conn = url.openConnection() as java.net.HttpURLConnection
+                                    conn.requestMethod = "POST"
+                                    conn.setRequestProperty("Content-Type", "application/json")
+                                    conn.doOutput = true
+                                    conn.connectTimeout = 3000
+                                    conn.readTimeout = 3000
+                                    conn.outputStream.write(payload.toByteArray(Charsets.UTF_8))
+                                    if (conn.responseCode in 200..299) {
+                                        break
                                     }
-                                """.trimIndent()
-                                conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
-                                conn.responseCode // execute request
-                            } catch (_: Exception) {
-                                // Fallback handled by offline sync repository
+                                } catch (_: Exception) {}
                             }
                         }
                     },
@@ -1001,7 +1167,7 @@ fun ChatsTabScreen(
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(recentChats) { user ->
-                val lastMsg = chatThreads[user.id]?.lastOrNull()
+                val lastMsg = chatThreads[user.id]?.lastOrNull() ?: chatThreads[user.username]?.lastOrNull()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1016,15 +1182,18 @@ fun ChatsTabScreen(
                             .background(WaGreenPrimary),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(user.displayName.take(1), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(user.displayName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(user.displayName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        val previewText = when {
+                            lastMsg != null -> if (lastMsg.isVoiceNote) "🎵 Voice Note" else lastMsg.text
+                            user.lastMessagePreview.isNotBlank() -> user.lastMessagePreview
+                            else -> "@${user.username} • ${user.bio}"
+                        }
                         Text(
-                            text = if (lastMsg != null) {
-                                if (lastMsg.isVoiceNote) "🎵 Voice Note" else lastMsg.text
-                            } else "@${user.username} • ${user.bio}",
+                            text = previewText,
                             color = Color.Gray,
                             fontSize = 14.sp,
                             maxLines = 1
@@ -1043,18 +1212,25 @@ fun GlobalSearchTabScreen(onSelectUser: (UserUI) -> Unit) {
     var usersList by remember {
         mutableStateOf(
             listOf(
-                UserUI("1", "alice", "Alice Smith", "Hey there!"),
-                UserUI("2", "bob_dev", "Bob Builder", "Android KMP"),
-                UserUI("3", "charlie_kmp", "Charlie Kotlin", "Kotlin Multiplatform Developer"),
-                UserUI("4", "ahmed", "Ahmed", "VibeSync User")
+                UserUI("admin", "admin", "System Admin", "Official VibeSync Administrator")
             )
         )
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        val allUsers = UserApiClient.fetchAllUsers(context)
+        if (allUsers.isNotEmpty()) {
+            usersList = allUsers
+        }
+    }
+
     LaunchedEffect(searchQuery) {
-        val remoteResults = UserApiClient.searchUsers(searchQuery)
-        if (remoteResults.isNotEmpty()) {
-            usersList = remoteResults
+        if (searchQuery.isNotBlank()) {
+            val remoteResults = UserApiClient.searchUsers(searchQuery, context)
+            if (remoteResults.isNotEmpty()) {
+                usersList = remoteResults
+            }
         }
     }
 
@@ -1219,6 +1395,7 @@ class VoiceRecorder(private val context: android.content.Context) {
 @Composable
 fun ChatRoomScreen(
     partner: UserUI,
+    currentUsername: String = "me",
     messages: androidx.compose.runtime.snapshots.SnapshotStateList<MessageUI>,
     onSendMessage: (String) -> Unit,
     onBack: () -> Unit
@@ -1240,6 +1417,26 @@ fun ChatRoomScreen(
     val voiceRecorder = remember { VoiceRecorder(context) }
     val emojis = remember {
         listOf("😀", "😂", "😍", "👍", "🔥", "🎉", "❤️", "🙏", "😎", "🥳", "🥺", "🤔", "👏", "💯", "🚀")
+    }
+
+    LaunchedEffect(partner.id, partner.username) {
+        try {
+            android.util.Log.d("VibeSync", "ChatRoomScreen LaunchedEffect for partner.id=${partner.id}, currentUsername=$currentUsername")
+            var remoteMsgs = UserApiClient.fetchMessages(partner.id, currentUsername, context)
+            if (remoteMsgs.isEmpty() && partner.username.isNotBlank() && partner.username != partner.id) {
+                remoteMsgs = UserApiClient.fetchMessages(partner.username, currentUsername, context)
+            }
+            android.util.Log.d("VibeSync", "ChatRoomScreen fetched ${remoteMsgs.size} messages")
+            if (remoteMsgs.isNotEmpty()) {
+                remoteMsgs.forEach { msg ->
+                    if (!messages.any { it.id == msg.id }) {
+                        messages.add(msg)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("VibeSync", "ChatRoomScreen fetch error: ${e.message}")
+        }
     }
 
     val contentPickerLauncher = rememberLauncherForActivityResult(
@@ -1281,13 +1478,14 @@ fun ChatRoomScreen(
     Column(modifier = Modifier.fillMaxSize().background(WaBackgroundChat)) {
         LazyColumn(modifier = Modifier.weight(1f).padding(12.dp)) {
             items(messages) { msg ->
-                val isOutgoing = msg.senderId == "me"
+                val isOutgoing = msg.senderId == "me" || (!msg.senderId.equals(partner.id, ignoreCase = true) && !msg.senderId.equals(partner.username, ignoreCase = true))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
                 ) {
                     Surface(
                         color = if (isOutgoing) WaBubbleOut else Color.White,
+                        contentColor = Color(0xFF111B21),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.padding(vertical = 4.dp).widthIn(max = 280.dp),
                         shadowElevation = 1.dp
@@ -1300,7 +1498,7 @@ fun ChatRoomScreen(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(Icons.Default.Image, contentDescription = "Photo", tint = WaGreenPrimary)
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text(msg.attachmentName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                Text(msg.attachmentName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF111B21))
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Box(
@@ -1318,7 +1516,7 @@ fun ChatRoomScreen(
                                             }
                                             if (msg.text.isNotBlank()) {
                                                 Spacer(modifier = Modifier.height(4.dp))
-                                                Text(msg.text, fontSize = 14.sp)
+                                                Text(msg.text, fontSize = 14.sp, color = Color(0xFF111B21))
                                             }
                                         }
                                     }
@@ -1333,25 +1531,25 @@ fun ChatRoomScreen(
                                             Icon(Icons.Default.Description, contentDescription = "Document", tint = WaGreenPrimary, modifier = Modifier.size(32.dp))
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text(msg.attachmentName, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                                                Text(msg.attachmentName, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, color = Color(0xFF111B21))
                                                 Text("Document • ${msg.attachmentSize}", fontSize = 11.sp, color = Color.Gray)
                                             }
                                             Icon(Icons.Default.FileDownload, contentDescription = "Download", tint = WaGreenPrimary)
                                         }
                                         if (msg.text.isNotBlank()) {
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text(msg.text, fontSize = 14.sp)
+                                            Text(msg.text, fontSize = 14.sp, color = Color(0xFF111B21))
                                         }
                                     }
                                     else -> {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.InsertDriveFile, contentDescription = "File", tint = WaGreenPrimary)
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("${msg.attachmentName} (${msg.attachmentSize})", fontSize = 14.sp)
+                                            Text("${msg.attachmentName} (${msg.attachmentSize})", fontSize = 14.sp, color = Color(0xFF111B21))
                                         }
                                         if (msg.text.isNotBlank()) {
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text(msg.text, fontSize = 14.sp)
+                                            Text(msg.text, fontSize = 14.sp, color = Color(0xFF111B21))
                                         }
                                     }
                                 }
@@ -1372,10 +1570,10 @@ fun ChatRoomScreen(
                                             )
                                         }
                                     }
-                                    Text("1.5x", fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp))
+                                    Text("1.5x", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111B21), modifier = Modifier.padding(start = 6.dp))
                                 }
                             } else {
-                                Text(msg.text, fontSize = 15.sp)
+                                Text(msg.text, fontSize = 15.sp, color = Color(0xFF111B21))
                             }
                         }
                     }
@@ -1835,7 +2033,7 @@ fun AdminDashboardScreen(onExit: () -> Unit) {
     }
 
     LaunchedEffect(Unit) {
-        val remoteUsers = UserApiClient.fetchAllUsers()
+        val remoteUsers = UserApiClient.fetchAllUsers(context)
         if (remoteUsers.isNotEmpty()) {
             remoteUsers.forEach { remote ->
                 if (adminUsers.none { it.username.equals(remote.username, ignoreCase = true) }) {
@@ -2252,7 +2450,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         try {
-            val all = UserApiClient.fetchAllUsers()
+            val all = UserApiClient.fetchAllUsers(context)
             if (all.isNotEmpty()) {
                 availableUsers = all
                 currentUser = all.first()
@@ -2747,7 +2945,21 @@ fun SignupScreen(onSignupComplete: (String) -> Unit) {
     var passwordInput by remember { mutableStateOf("") }
     var usernameInput by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var showServerDialog by remember { mutableStateOf(false) }
+    var activeServerUrl by remember { mutableStateOf(NetworkConfig.getBaseUrl()) }
     val coroutineScope = rememberCoroutineScope()
+
+    if (showServerDialog) {
+        com.whatsapp.clone.config.ServerConfigDialog(
+            onDismiss = {
+                showServerDialog = false
+                activeServerUrl = NetworkConfig.getBaseUrl()
+            },
+            onConfigChanged = {
+                activeServerUrl = NetworkConfig.getBaseUrl()
+            }
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -2766,6 +2978,41 @@ fun SignupScreen(onSignupComplete: (String) -> Unit) {
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Top Server Configuration Bar
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF1F5F9),
+                    modifier = Modifier
+                        .clickable { showServerDialog = true }
+                        .padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "Server: ${activeServerUrl.replace("http://", "")}",
+                            fontSize = 11.sp,
+                            color = Color(0xFF475569),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Server Settings",
+                            tint = Color(0xFF64748B),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .size(60.dp)
@@ -2869,6 +3116,7 @@ fun SignupScreen(onSignupComplete: (String) -> Unit) {
                             val uName = if (usernameInput.isNotBlank()) usernameInput.trim().replace("@", "") else emailInput.trim().split("@")[0]
 
                             val errorMsg = UserApiClient.signupDeviceWithBackend(
+                                context = context,
                                 deviceId = deviceId,
                                 deviceModel = deviceModel,
                                 email = emailInput.trim(),

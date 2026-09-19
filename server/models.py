@@ -21,6 +21,7 @@ class ContactAdd(BaseModel):
 
 class MessageSend(BaseModel):
     conversation_id: Optional[str] = None
+    sender_id: Optional[str] = None
     recipient_id: str
     message_type: str = "TEXT"
     content: Optional[str] = None

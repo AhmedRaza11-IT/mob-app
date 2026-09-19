@@ -3,7 +3,7 @@ import zipfile
 import struct
 from PIL import Image, ImageDraw
 
-uploads_dir = r'c:\MobileApp\server\uploads'
+uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
 os.makedirs(uploads_dir, exist_ok=True)
 
 # 1. PNG Image

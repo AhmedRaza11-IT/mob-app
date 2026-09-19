@@ -25,6 +25,12 @@ except ImportError:
     RtcTokenBuilder = None
     Role_Publisher = None
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Agora RTC Configuration
 AGORA_APP_ID = os.getenv("AGORA_APP_ID", "aab1234567890abcdef1234567890abc")
 AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "")
@@ -78,35 +84,59 @@ def sync_device(data: dict):
     cursor = conn.cursor()
     now = int(time.time() * 1000)
 
+    # 1. If device sends an existing username (e.g. from local storage), ensure user profile exists & link
+    if req_username and req_username.strip() and req_username.strip() != "Current User":
+        clean_name = req_username.strip().lstrip("@")
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_name,))
+        user_row = cursor.fetchone()
+        if user_row:
+            user_id = user_row["id"]
+            clean_name = user_row["username"]
+        else:
+            user_id = str(uuid.uuid4())
+            cursor.execute(
+                """INSERT INTO users (id, username, display_name, bio, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, clean_name, clean_name.capitalize(), "Available | Powered by VibeSync", now)
+            )
+
+        cursor.execute(
+            """INSERT INTO devices (device_id, user_id, device_model, username, email, password, last_sync_timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(device_id) DO UPDATE SET
+                 user_id = excluded.user_id,
+                 device_model = excluded.device_model,
+                 username = excluded.username,
+                 email = COALESCE(excluded.email, devices.email),
+                 password = COALESCE(excluded.password, devices.password),
+                 last_sync_timestamp = excluded.last_sync_timestamp""",
+            (device_id, user_id, device_model, clean_name, email, password, now)
+        )
+        conn.commit()
+        conn.close()
+        return {
+            "device_id": device_id,
+            "device_model": device_model,
+            "username": clean_name,
+            "email": email,
+            "last_sync_timestamp": now
+        }
+
     cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
     row = cursor.fetchone()
     
-    # 1. Smart device model resolution if device_id is unknown or fallback
-    if not row or row["username"] == "Current User":
-        cursor.execute(
-            """SELECT * FROM devices 
-               WHERE LOWER(device_model) = LOWER(?) AND username != 'Current User' 
-               ORDER BY last_sync_timestamp DESC""", 
-            (device_model,)
-        )
-        matched_model_row = cursor.fetchone()
-        if matched_model_row:
-            user_id = matched_model_row["user_id"]
-            username = matched_model_row["username"]
-            email = matched_model_row["email"]
-            password = matched_model_row["password"]
-            
+    # 2. Existing device record found with active user
+    if row and row["username"] and row["username"] != "Current User":
+        cursor.execute("SELECT * FROM users WHERE username = ? OR id = ?", (row["username"], row["user_id"]))
+        user_exists = cursor.fetchone()
+        
+        if user_exists:
+            username = row["username"]
             cursor.execute(
-                """INSERT INTO devices (device_id, user_id, device_model, username, email, password, last_sync_timestamp)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(device_id) DO UPDATE SET 
-                     user_id = excluded.user_id,
-                     device_model = excluded.device_model,
-                     username = excluded.username,
-                     email = excluded.email,
-                     password = excluded.password,
-                     last_sync_timestamp = excluded.last_sync_timestamp""",
-                (device_id, user_id, device_model, username, email, password, now)
+                """UPDATE devices 
+                   SET device_model = ?, email = COALESCE(?, email), password = COALESCE(?, password), last_sync_timestamp = ? 
+                   WHERE device_id = ?""",
+                (device_model, email, password, now, device_id)
             )
             conn.commit()
             conn.close()
@@ -114,38 +144,35 @@ def sync_device(data: dict):
                 "device_id": device_id,
                 "device_model": device_model,
                 "username": username,
-                "email": email,
+                "email": email or (row["email"] if "email" in row.keys() else None),
                 "last_sync_timestamp": now
             }
 
-    # 2. Existing device record found with active user
-    if row and row["username"] and row["username"] != "Current User":
-        # Check if the user actually exists in users table (has not been deleted by Admin)
-        cursor.execute("SELECT * FROM users WHERE username = ? OR id = ?", (row["username"], row["user_id"]))
-        user_exists = cursor.fetchone()
+    # 3. Model matching fallback if device_id is fresh
+    cursor.execute(
+        """SELECT * FROM devices 
+           WHERE LOWER(device_model) = LOWER(?) AND username != 'Current User' 
+           ORDER BY last_sync_timestamp DESC""", 
+        (device_model,)
+    )
+    matched_model_row = cursor.fetchone()
+    if matched_model_row and matched_model_row["username"] != "Current User":
+        user_id = matched_model_row["user_id"]
+        username = matched_model_row["username"]
+        email = matched_model_row["email"]
+        password = matched_model_row["password"]
         
-        if not user_exists:
-            # User was deleted by Admin! Reset device username to "Current User"
-            cursor.execute(
-                "UPDATE devices SET username = 'Current User', user_id = NULL, last_sync_timestamp = ? WHERE device_id = ?",
-                (now, device_id)
-            )
-            conn.commit()
-            conn.close()
-            return {
-                "device_id": device_id,
-                "device_model": device_model,
-                "username": "Current User",
-                "email": None,
-                "last_sync_timestamp": now
-            }
-
-        username = req_username if req_username and req_username != "Current User" else row["username"]
         cursor.execute(
-            """UPDATE devices 
-               SET device_model = ?, username = ?, email = COALESCE(?, email), password = COALESCE(?, password), last_sync_timestamp = ? 
-               WHERE device_id = ?""",
-            (device_model, username, email, password, now, device_id)
+            """INSERT INTO devices (device_id, user_id, device_model, username, email, password, last_sync_timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(device_id) DO UPDATE SET 
+                 user_id = excluded.user_id,
+                 device_model = excluded.device_model,
+                 username = excluded.username,
+                 email = excluded.email,
+                 password = excluded.password,
+                 last_sync_timestamp = excluded.last_sync_timestamp""",
+            (device_id, user_id, device_model, username, email, password, now)
         )
         conn.commit()
         conn.close()
@@ -153,17 +180,16 @@ def sync_device(data: dict):
             "device_id": device_id,
             "device_model": device_model,
             "username": username,
-            "email": email or (row["email"] if "email" in row.keys() else None),
+            "email": email,
             "last_sync_timestamp": now
         }
 
-    # 3. New or unassigned device - register device record as 'Current User' to prompt account creation/sign in
+    # 4. New or unassigned device
     cursor.execute(
         """INSERT INTO devices (device_id, device_model, username, email, password, last_sync_timestamp)
            VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(device_id) DO UPDATE SET
              device_model = excluded.device_model,
-             username = 'Current User',
              last_sync_timestamp = excluded.last_sync_timestamp""",
         (device_id, device_model, "Current User", email, password, now)
     )
@@ -446,6 +472,226 @@ def get_all_devices():
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+# --- ADMIN MESSAGING & CALLING ENDPOINTS ---
+
+@app.get("/api/admin/messages/{user_id}")
+def get_admin_user_messages(user_id: str):
+    """
+    Fetches all messages exchanged between Admin and a specific user.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Resolve target user
+    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (user_id, user_id))
+    user_row = cursor.fetchone()
+    target_id = user_row["id"] if user_row else user_id
+
+    p1, p2 = sorted(["admin", target_id])
+    cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
+    conv_row = cursor.fetchone()
+
+    if not conv_row:
+        conn.close()
+        return []
+
+    conv_id = conv_row["id"]
+    cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC", (conv_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    messages = []
+    for r in rows:
+        m = dict(r)
+        if m.get("waveform_data"):
+            try:
+                m["waveform_data"] = json.loads(m["waveform_data"])
+            except Exception:
+                m["waveform_data"] = []
+        messages.append(m)
+
+    return messages
+
+@app.post("/api/admin/messages/send")
+async def admin_send_message(data: dict):
+    """
+    Sends a message from System Admin to any user and triggers real-time WebSocket delivery.
+    """
+    recipient_id = data.get("recipient_id")
+    content = data.get("content", "").strip()
+    message_type = data.get("message_type", "TEXT")
+
+    if not recipient_id or not content:
+        raise HTTPException(status_code=400, detail="Missing recipient_id or content")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    now = int(time.time() * 1000)
+
+    # Resolve recipient user info
+    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (recipient_id, recipient_id))
+    user_row = cursor.fetchone()
+    target_id = user_row["id"] if user_row else recipient_id
+    target_username = user_row["username"] if user_row else recipient_id
+
+    sender_id = "admin"
+    p1, p2 = sorted([sender_id, target_id])
+
+    cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
+    conv_row = cursor.fetchone()
+
+    if conv_row:
+        conv_id = conv_row["id"]
+        cursor.execute("UPDATE conversations SET last_message_preview = ?, last_message_time = ? WHERE id = ?", (content, now, conv_id))
+    else:
+        conv_id = str(uuid.uuid4())
+        cursor.execute("INSERT INTO conversations (id, participant_one, participant_two, last_message_preview, last_message_time) VALUES (?, ?, ?, ?, ?)", (conv_id, p1, p2, content, now))
+
+    msg_id = str(uuid.uuid4())
+    status = "DELIVERED" if (ws_manager.is_online(target_id) or ws_manager.is_online(target_username)) else "SENT"
+
+    cursor.execute("""
+        INSERT INTO messages (id, conversation_id, sender_id, recipient_id, message_type, content, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (msg_id, conv_id, sender_id, target_id, message_type, content, status, now))
+
+    conn.commit()
+    conn.close()
+
+    event = {
+        "type": "NEW_MESSAGE",
+        "payload": {
+            "id": msg_id,
+            "conversation_id": conv_id,
+            "sender_id": "admin",
+            "sender_username": "admin",
+            "sender_display_name": "System Admin",
+            "recipient_id": target_id,
+            "message_type": message_type,
+            "content": content,
+            "status": status,
+            "created_at": now
+        }
+    }
+
+    # Dispatch to target ID and target username
+    await ws_manager.send_personal_message(event, target_id)
+    if target_username != target_id:
+        await ws_manager.send_personal_message(event, target_username)
+
+    return {
+        "status": "success",
+        "message": {
+            "id": msg_id,
+            "conversation_id": conv_id,
+            "sender_id": "admin",
+            "recipient_id": target_id,
+            "message_type": message_type,
+            "content": content,
+            "status": status,
+            "created_at": now
+        }
+    }
+
+@app.post("/api/admin/calls/initiate")
+async def admin_initiate_call(data: dict):
+    """
+    Initiates a voice or video call from Admin to any user, generates Agora RTC token,
+    and broadcasts CALL_INITIATE to the target user device.
+    """
+    recipient_id = data.get("recipient_id")
+    is_video = bool(data.get("is_video", False))
+
+    if not recipient_id:
+        raise HTTPException(status_code=400, detail="Missing recipient_id")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    now = int(time.time() * 1000)
+
+    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (recipient_id, recipient_id))
+    user_row = cursor.fetchone()
+    target_id = user_row["id"] if user_row else recipient_id
+    target_username = user_row["username"] if user_row else recipient_id
+
+    call_id = str(uuid.uuid4())
+    channel_name = f"admin_call_{target_username}_{int(time.time())}"
+
+    # Generate Agora RTC Token
+    app_id = AGORA_APP_ID
+    app_cert = AGORA_APP_CERTIFICATE
+    token = ""
+    if RtcTokenBuilder and Role_Publisher and app_id and app_cert:
+        try:
+            expiration = 86400
+            privilege_expired_ts = int(time.time()) + expiration
+            token = RtcTokenBuilder.buildTokenWithUid(
+                app_id, app_cert, channel_name, 0, Role_Publisher, privilege_expired_ts
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate Agora token: {e}")
+
+    # Log call
+    cursor.execute("""
+        INSERT INTO call_logs (id, caller_id, recipient_id, is_video, status, timestamp)
+        VALUES (?, 'admin', ?, ?, 'INITIATED', ?)
+    """, (call_id, target_id, 1 if is_video else 0, now))
+    conn.commit()
+    conn.close()
+
+    call_signal = {
+        "type": "CALL_INITIATE",
+        "call_id": call_id,
+        "caller_id": "admin",
+        "caller_name": "System Admin",
+        "recipient_id": target_id,
+        "is_video": is_video,
+        "channel_name": channel_name,
+        "agora_app_id": app_id,
+        "token": token,
+        "timestamp": now
+    }
+
+    await ws_manager.send_personal_message(call_signal, target_id)
+    if target_username != target_id:
+        await ws_manager.send_personal_message(call_signal, target_username)
+
+    return {
+        "status": "success",
+        "call_id": call_id,
+        "channel_name": channel_name,
+        "agora_app_id": app_id,
+        "token": token,
+        "is_video": is_video,
+        "target_username": target_username
+    }
+
+@app.post("/api/admin/calls/end")
+async def admin_end_call(data: dict):
+    recipient_id = data.get("recipient_id")
+    channel_name = data.get("channel_name")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (recipient_id, recipient_id))
+    user_row = cursor.fetchone()
+    target_id = user_row["id"] if user_row else recipient_id
+    target_username = user_row["username"] if user_row else recipient_id
+    conn.close()
+
+    end_signal = {
+        "type": "CALL_ENDED",
+        "sender_id": "admin",
+        "recipient_id": target_id,
+        "channel_name": channel_name
+    }
+
+    await ws_manager.send_personal_message(end_signal, target_id)
+    if target_username != target_id:
+        await ws_manager.send_personal_message(end_signal, target_username)
+
+    return {"status": "success"}
 
 # --- AUTH & PROFILES ---
 
@@ -931,18 +1177,25 @@ def get_roster(owner_id: str):
 def get_conversations(user_id: str):
     conn = get_db()
     cursor = conn.cursor()
+
+    # Resolve user
+    cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (user_id, user_id))
+    u_row = cursor.fetchone()
+    u_id = u_row["id"] if u_row else user_id
+    u_name = u_row["username"] if u_row else user_id
+
     cursor.execute("""
         SELECT c.*,
-               CASE WHEN c.participant_one = ? THEN u2.id ELSE u1.id END AS partner_id,
-               CASE WHEN c.participant_one = ? THEN u2.username ELSE u1.username END AS partner_username,
-               CASE WHEN c.participant_one = ? THEN u2.display_name ELSE u1.display_name END AS partner_display_name,
-               CASE WHEN c.participant_one = ? THEN u2.avatar_url ELSE u1.avatar_url END AS partner_avatar_url
+               CASE WHEN (c.participant_one = ? OR c.participant_one = ?) THEN COALESCE(u2.id, c.participant_two) ELSE COALESCE(u1.id, c.participant_one) END AS partner_id,
+               CASE WHEN (c.participant_one = ? OR c.participant_one = ?) THEN COALESCE(u2.username, c.participant_two) ELSE COALESCE(u1.username, c.participant_one) END AS partner_username,
+               CASE WHEN (c.participant_one = ? OR c.participant_one = ?) THEN COALESCE(u2.display_name, u2.username, c.participant_two) ELSE COALESCE(u1.display_name, u1.username, c.participant_one) END AS partner_display_name,
+               CASE WHEN (c.participant_one = ? OR c.participant_one = ?) THEN u2.avatar_url ELSE u1.avatar_url END AS partner_avatar_url
         FROM conversations c
-        JOIN users u1 ON c.participant_one = u1.id
-        JOIN users u2 ON c.participant_two = u2.id
-        WHERE c.participant_one = ? OR c.participant_two = ?
+        LEFT JOIN users u1 ON c.participant_one = u1.id OR LOWER(c.participant_one) = LOWER(u1.username)
+        LEFT JOIN users u2 ON c.participant_two = u2.id OR LOWER(c.participant_two) = LOWER(u2.username)
+        WHERE c.participant_one = ? OR c.participant_two = ? OR c.participant_one = ? OR c.participant_two = ?
         ORDER BY c.last_message_time DESC
-    """, (user_id, user_id, user_id, user_id, user_id, user_id))
+    """, (u_id, u_name, u_id, u_name, u_id, u_name, u_id, u_name, u_id, u_id, u_name, u_name))
     rows = cursor.fetchall()
     conn.close()
     
@@ -954,7 +1207,7 @@ def get_conversations(user_id: str):
     return conversations
 
 @app.get("/api/messages/{conversation_id}")
-def get_messages(conversation_id: str):
+def get_messages(conversation_id: str, current_user: Optional[str] = None):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
@@ -963,16 +1216,43 @@ def get_messages(conversation_id: str):
         ORDER BY created_at ASC
     """, (conversation_id,))
     rows = cursor.fetchall()
+    
+    # If no messages found by conversation_id, check if conversation_id is actually a user ID or username
+    if not rows:
+        cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (conversation_id, conversation_id))
+        u_row = cursor.fetchone()
+        if u_row:
+            u_id = u_row["id"]
+            if current_user:
+                cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (current_user, current_user))
+                cu_row = cursor.fetchone()
+                cu_id = cu_row["id"] if cu_row else current_user
+                p1, p2 = sorted([u_id, cu_id])
+                cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
+                c_row = cursor.fetchone()
+                if c_row:
+                    cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC", (c_row["id"],))
+                    rows = cursor.fetchall()
+            else:
+                cursor.execute("""
+                    SELECT m.* FROM messages m
+                    JOIN conversations c ON m.conversation_id = c.id
+                    WHERE c.participant_one = ? OR c.participant_two = ?
+                    ORDER BY m.created_at ASC
+                """, (u_id, u_id))
+                rows = cursor.fetchall()
+
     conn.close()
     
     messages = []
     for r in rows:
         m = dict(r)
-        if m["waveform_data"]:
+        if m.get("waveform_data"):
             try:
                 m["waveform_data"] = json.loads(m["waveform_data"])
             except Exception:
                 m["waveform_data"] = []
+        messages.append(m)
     return messages
 
 @app.post("/api/messages/send")
@@ -983,15 +1263,27 @@ def send_message_api(req: MessageSend):
     conn = get_db()
     cursor = conn.cursor()
     
-    sender_id = "me"
+    sender_id = req.sender_id or "me"
     recipient_id = req.recipient_id
     message_type = req.message_type
     content = req.content
     now = int(time.time() * 1000)
+
+    # Resolve sender if it is a username
+    cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (sender_id, sender_id))
+    s_row = cursor.fetchone()
+    if s_row:
+        sender_id = s_row["id"]
+
+    # Resolve recipient if it is a username
+    cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (recipient_id, recipient_id))
+    r_row = cursor.fetchone()
+    if r_row:
+        recipient_id = r_row["id"]
     
     # 1. Ensure conversation exists
     p1, p2 = sorted([sender_id, recipient_id])
-    cursor.execute("SELECT id FROM conversations WHERE participant_one = ? AND participant_two = ?", (p1, p2))
+    cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
     c_row = cursor.fetchone()
     if c_row:
         conv_id = c_row["id"]
@@ -1002,11 +1294,12 @@ def send_message_api(req: MessageSend):
         
     msg_id = str(uuid.uuid4())
     waveform_json = json.dumps(req.waveform_data) if req.waveform_data else None
+    status = "DELIVERED" if (ws_manager.is_online(recipient_id) or ws_manager.is_online(req.recipient_id)) else "SENT"
     
     cursor.execute("""
         INSERT INTO messages (id, conversation_id, sender_id, recipient_id, message_type, content, media_url, media_duration_ms, waveform_data, status, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (msg_id, conv_id, sender_id, recipient_id, message_type, content, req.media_url, req.media_duration_ms, waveform_json, "SENT", now))
+    """, (msg_id, conv_id, sender_id, recipient_id, message_type, content, req.media_url, req.media_duration_ms, waveform_json, status, now))
     
     conn.commit()
     conn.close()

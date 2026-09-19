@@ -13,6 +13,17 @@ import okhttp3.*
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+data class IncomingMessageEvent(
+    val id: String,
+    val conversationId: String,
+    val senderId: String,
+    val senderUsername: String,
+    val senderDisplayName: String,
+    val content: String,
+    val isVoiceNote: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class IncomingCallEvent(
     val callId: String,
     val callerId: String,
@@ -43,19 +54,27 @@ class WebSocketSignalingManager private constructor() {
     private var currentUserId: String? = null
     private var isConnected = false
 
+    private val _incomingMessages = MutableSharedFlow<IncomingMessageEvent>(extraBufferCapacity = 64)
+    val incomingMessages: SharedFlow<IncomingMessageEvent> = _incomingMessages.asSharedFlow()
+
     private val _incomingCalls = MutableSharedFlow<IncomingCallEvent>(extraBufferCapacity = 10)
     val incomingCalls: SharedFlow<IncomingCallEvent> = _incomingCalls.asSharedFlow()
 
     private val _callSignals = MutableSharedFlow<CallSignalEvent>(extraBufferCapacity = 20)
     val callSignals: SharedFlow<CallSignalEvent> = _callSignals.asSharedFlow()
 
-    private val candidateWsHosts = listOf(
-        "ws://127.0.0.1:8000/ws",
-        "ws://192.168.18.78:8000/ws",
-        "ws://192.168.100.92:8000/ws",
-        "ws://10.0.2.2:8000/ws",
-        "ws://localhost:8000/ws"
-    )
+    private fun getCandidateWsUrls(userId: String): List<String> {
+        val list = mutableListOf<String>()
+        val encodedUserId = java.net.URLEncoder.encode(userId.trim(), "UTF-8")
+        // 1. Active configured URL
+        list.add(com.whatsapp.clone.config.NetworkConfig.getWebSocketUrl(userId))
+        // 2. Candidate hosts
+        for (host in com.whatsapp.clone.config.NetworkConfig.buildCandidateHosts(null)) {
+            val wsBase = host.replace("http://", "ws://").replace("https://", "wss://")
+            list.add("$wsBase/ws?user_id=$encodedUserId")
+        }
+        return list.distinct()
+    }
 
     private fun cleanId(id: String?): String {
         if (id == null) return ""
@@ -74,10 +93,10 @@ class WebSocketSignalingManager private constructor() {
         val userId = currentUserId ?: return
         scope.launch {
             if (isConnected) return@launch
-            for (wsHost in candidateWsHosts) {
+            val candidates = getCandidateWsUrls(userId)
+            for (url in candidates) {
                 if (isConnected) break
                 try {
-                    val url = "$wsHost?user_id=$userId"
                     Log.d(TAG, "Attempting WebSocket connection to $url ...")
                     val request = Request.Builder().url(url).build()
                     val connectionLatch = kotlinx.coroutines.CompletableDeferred<Boolean>()
@@ -103,7 +122,7 @@ class WebSocketSignalingManager private constructor() {
                         }
 
                         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                            Log.w(TAG, "WebSocket connection failed to $wsHost: ${t.message}")
+                            Log.w(TAG, "WebSocket connection failed to $url: ${t.message}")
                             if (this@WebSocketSignalingManager.webSocket == webSocket) {
                                 isConnected = false
                                 this@WebSocketSignalingManager.webSocket = null
@@ -117,13 +136,13 @@ class WebSocketSignalingManager private constructor() {
                     } ?: false
 
                     if (result && isConnected) {
-                        Log.i(TAG, "Established stable WebSocket connection on $wsHost")
+                        Log.i(TAG, "Established stable WebSocket connection on $url")
                         break
                     } else {
                         ws.cancel()
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error connecting to $wsHost", e)
+                    Log.e(TAG, "Error connecting to $url", e)
                 }
             }
         }
@@ -139,6 +158,30 @@ class WebSocketSignalingManager private constructor() {
             Log.d(TAG, "Received WS signal: $type from $senderId to $recipientId")
 
             when (type) {
+                "NEW_MESSAGE", "CHAT_MESSAGE", "MESSAGE" -> {
+                    val payload = json.optJSONObject("payload") ?: json
+                    val msgId = payload.optString("id", java.util.UUID.randomUUID().toString())
+                    val convId = payload.optString("conversation_id", "")
+                    val sId = payload.optString("sender_id", senderId)
+                    val sUsername = payload.optString("sender_username", sId)
+                    val sDisplayName = payload.optString("sender_display_name", sUsername)
+                    val text = payload.optString("content", "")
+                    val isVoice = payload.optString("message_type") == "VOICE_NOTE" || payload.optString("message_type") == "AUDIO" || payload.optBoolean("is_voice_note", false)
+                    val ts = payload.optLong("created_at", System.currentTimeMillis())
+
+                    val event = IncomingMessageEvent(
+                        id = msgId,
+                        conversationId = convId,
+                        senderId = sId,
+                        senderUsername = sUsername,
+                        senderDisplayName = sDisplayName,
+                        content = text,
+                        isVoiceNote = isVoice,
+                        timestamp = ts
+                    )
+                    Log.i(TAG, "Dispatched IncomingMessageEvent: from $sDisplayName: $text")
+                    _incomingMessages.tryEmit(event)
+                }
                 "CALL_INITIATE" -> {
                     val callId = json.optString("call_id", java.util.UUID.randomUUID().toString())
                     val callerName = json.optString("caller_name", senderId)

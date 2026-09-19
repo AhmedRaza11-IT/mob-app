@@ -6,7 +6,7 @@ import time
 DB_FILE = os.path.join(os.path.dirname(__file__), "app.db")
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -14,8 +14,10 @@ def init_db():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Enable WAL mode and foreign keys
+    # Enable persistent WAL mode, normal synchronous, and 30s busy timeout
     cursor.execute("PRAGMA journal_mode = WAL;")
+    cursor.execute("PRAGMA synchronous = NORMAL;")
+    cursor.execute("PRAGMA busy_timeout = 30000;")
     cursor.execute("PRAGMA foreign_keys = ON;")
     
     # 1. Users table (No device contacts, strict @username discovery)
@@ -30,6 +32,14 @@ def init_db():
     );
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_search ON users(username, display_name);")
+
+    # Ensure system admin user exists
+    cursor.execute("SELECT id FROM users WHERE username = 'admin' OR id = 'admin';")
+    if not cursor.fetchone():
+        cursor.execute("""
+        INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, bio, created_at)
+        VALUES ('admin', 'admin', 'System Admin', '', 'Official VibeSync Administrator', 1700000000000);
+        """)
 
     # 1b. Devices table for remote device assignment via ANDROID_ID & credentials
     cursor.execute("""
