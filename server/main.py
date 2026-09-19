@@ -40,6 +40,9 @@ except ImportError:
 AGORA_APP_ID = os.getenv("AGORA_APP_ID", "e63a3e4f21124b659d8eeaef92f367c2")
 AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "")
 
+# Admin authentication
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "vibesync@admin2024")
+
 
 app = FastAPI(title="WhatsApp Clone Backend API")
 
@@ -446,6 +449,18 @@ def get_data_summary():
     }
 
 
+
+
+@app.post("/api/admin/login")
+def admin_login(data: dict):
+    password = data.get("password", "").strip()
+    if password == ADMIN_PASSWORD:
+        return {
+            "status": "success",
+            "token": "admin_session_token",
+            "message": "Authentication successful"
+        }
+    raise HTTPException(status_code=401, detail="Invalid admin credentials")
 
 
 @app.post("/api/admin/assign-username")

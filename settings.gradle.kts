@@ -15,5 +15,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "VibeSync"
 include(":androidApp")
+include(":adminApp")
 include(":shared")
 project(":shared").projectDir = file("kmp_shared")
