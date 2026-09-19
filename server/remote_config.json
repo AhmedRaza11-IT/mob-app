@@ -1,0 +1,10 @@
+{
+  "allow_screenshots": true,
+  "voice_calling_enabled": true,
+  "maintenance_mode": false,
+  "min_required_version": 1,
+  "latest_version_code": 104,
+  "latest_version_name": "1.0.4",
+  "apk_url": "/static/vibesync-release.apk",
+  "release_notes": "Official VibeSync Enterprise Client Update"
+}

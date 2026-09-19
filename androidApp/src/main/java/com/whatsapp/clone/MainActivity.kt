@@ -573,6 +573,34 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     var showSplashScreen by remember { mutableStateOf(true) }
     var showSignupScreen by remember { mutableStateOf(assignedDeviceUsername == "Current User") }
 
+    // Dynamic Remote Policy & Feature Configuration
+    val remoteConfigManager = remember {
+        com.whatsapp.clone.platform.RemoteConfigManager.instance.apply { init(context) }
+    }
+    val remoteConfig by remoteConfigManager.configState.collectAsState()
+
+    // Dynamic Screenshot Policy (FLAG_SECURE)
+    LaunchedEffect(remoteConfig.allowScreenshots) {
+        val activity = context as? android.app.Activity ?: return@LaunchedEffect
+        if (!remoteConfig.allowScreenshots) {
+            activity.window.setFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SECURE,
+                android.view.WindowManager.LayoutParams.FLAG_SECURE
+            )
+            android.util.Log.d("VibeSync", "Policy applied: FLAG_SECURE active (screenshots blocked)")
+        } else {
+            activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            android.util.Log.d("VibeSync", "Policy applied: FLAG_SECURE cleared (screenshots allowed)")
+        }
+    }
+
+    // Dynamic Voice Calling policy tab reset
+    LaunchedEffect(remoteConfig.voiceCallingEnabled) {
+        if (!remoteConfig.voiceCallingEnabled && selectedTab == 2) {
+            selectedTab = 0
+        }
+    }
+
     // Helper to sync conversations and messages from backend
     suspend fun syncConversationsWithBackend(username: String) {
         if (username.isBlank() || username == "Current User") return
@@ -777,6 +805,9 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     // Hardware Identity Sync & Splash Transition
     LaunchedEffect(Unit) {
         try {
+            // Check for OTA Enterprise Package Updates
+            com.whatsapp.clone.platform.OtaUpdateManager.instance.checkForUpdates(context)
+
             // Auto-discover working server IP on current Wi-Fi/Network
             NetworkConfig.discoverServer(context)
 
@@ -853,6 +884,40 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
         return
     }
 
+    if (remoteConfig.maintenanceMode) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0F172A))
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Default.Build,
+                    contentDescription = "Maintenance",
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.size(72.dp)
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    "System Maintenance",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "VibeSync services are currently undergoing scheduled maintenance. Please check back shortly.",
+                    fontSize = 15.sp,
+                    color = Color(0xFF94A3B8),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+        return
+    }
+
     if (showSignupScreen) {
         SignupScreen(
             onSignupComplete = { username ->
@@ -893,91 +958,93 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     },
                     actions = {
                         if (!isAdminMode && activeChatPartner != null) {
-                            IconButton(onClick = {
-                                isCallVideo = false
-                                val p = activeChatPartner!!
-                                callLogs.add(0, CallLogUI(partner = p, isVideo = false))
-                                isInCall = true
+                            if (remoteConfig.voiceCallingEnabled) {
+                                IconButton(onClick = {
+                                    isCallVideo = false
+                                    val p = activeChatPartner!!
+                                    callLogs.add(0, CallLogUI(partner = p, isVideo = false))
+                                    isInCall = true
 
-                                // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
-                                val channelName = p.id
-                                com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
-                                    recipientId = p.id,
-                                    callerName  = assignedDeviceUsername,
-                                    isVideo     = false,
-                                    channelName = channelName
-                                )
-                                com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
-                                    recipientId = p.id,
-                                    callerName  = assignedDeviceUsername,
-                                    isVideo     = false,
-                                    channelName = channelName
-                                )
+                                    // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
+                                    val channelName = p.id
+                                    com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
+                                        recipientId = p.id,
+                                        callerName  = assignedDeviceUsername,
+                                        isVideo     = false,
+                                        channelName = channelName
+                                    )
+                                    com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
+                                        recipientId = p.id,
+                                        callerName  = assignedDeviceUsername,
+                                        isVideo     = false,
+                                        channelName = channelName
+                                    )
 
-                                // Join Agora RTC channel (caller side)
-                                com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
-                                    cm.init(context, "aab1234567890abcdef1234567890abc")
-                                    cm.joinCall("", channelName, 0, false)
+                                    // Join Agora RTC channel (caller side)
+                                    com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
+                                        cm.init(context, "aab1234567890abcdef1234567890abc")
+                                        cm.joinCall("", channelName, 0, false)
+                                    }
+
+                                    // Log call to backend
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                        try {
+                                            val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
+                                            val conn = url.openConnection() as java.net.HttpURLConnection
+                                            conn.requestMethod = "POST"
+                                            conn.setRequestProperty("Content-Type", "application/json")
+                                            conn.doOutput = true
+                                            val jsonPayload = """{"recipient_id": "${p.id}", "is_video": false}"""
+                                            conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
+                                            conn.responseCode
+                                        } catch (_: Exception) {}
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = Color.White)
                                 }
+                                IconButton(onClick = {
+                                    isCallVideo = true
+                                    val p = activeChatPartner!!
+                                    callLogs.add(0, CallLogUI(partner = p, isVideo = true))
+                                    isInCall = true
 
-                                // Log call to backend
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                    try {
-                                        val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
-                                        val conn = url.openConnection() as java.net.HttpURLConnection
-                                        conn.requestMethod = "POST"
-                                        conn.setRequestProperty("Content-Type", "application/json")
-                                        conn.doOutput = true
-                                        val jsonPayload = """{"recipient_id": "${p.id}", "is_video": false}"""
-                                        conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
-                                        conn.responseCode
-                                    } catch (_: Exception) {}
+                                    // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
+                                    val channelName = p.id
+                                    com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
+                                        recipientId = p.id,
+                                        callerName  = assignedDeviceUsername,
+                                        isVideo     = true,
+                                        channelName = channelName
+                                    )
+                                    com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
+                                        recipientId = p.id,
+                                        callerName  = assignedDeviceUsername,
+                                        isVideo     = true,
+                                        channelName = channelName
+                                    )
+
+                                    // Join Agora RTC channel (caller side)
+                                    com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
+                                        cm.init(context, "aab1234567890abcdef1234567890abc")
+                                        cm.joinCall("", channelName, 0, true)
+                                    }
+
+                                    // Log call to backend
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                        try {
+                                            val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
+                                            val conn = url.openConnection() as java.net.HttpURLConnection
+                                            conn.requestMethod = "POST"
+                                            conn.setRequestProperty("Content-Type", "application/json")
+                                            conn.doOutput = true
+                                            val jsonPayload = """{"recipient_id": "${p.id}", "is_video": true}"""
+                                            conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
+                                            conn.responseCode
+                                        } catch (_: Exception) {}
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = Color.White)
                                 }
-                            }) {
-                                Icon(Icons.Default.Call, contentDescription = "Call", tint = Color.White)
-                            }
-                            IconButton(onClick = {
-                                isCallVideo = true
-                                val p = activeChatPartner!!
-                                callLogs.add(0, CallLogUI(partner = p, isVideo = true))
-                                isInCall = true
-
-                                // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
-                                val channelName = p.id
-                                com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
-                                    recipientId = p.id,
-                                    callerName  = assignedDeviceUsername,
-                                    isVideo     = true,
-                                    channelName = channelName
-                                )
-                                com.whatsapp.clone.platform.WebSocketSignalingManager.instance.sendCallInitiate(
-                                    recipientId = p.id,
-                                    callerName  = assignedDeviceUsername,
-                                    isVideo     = true,
-                                    channelName = channelName
-                                )
-
-                                // Join Agora RTC channel (caller side)
-                                com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
-                                    cm.init(context, "aab1234567890abcdef1234567890abc")
-                                    cm.joinCall("", channelName, 0, true)
-                                }
-
-                                // Log call to backend
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                    try {
-                                        val url = java.net.URL("${com.whatsapp.clone.config.NetworkConfig.BASE_HTTP_URL}/api/calls/log")
-                                        val conn = url.openConnection() as java.net.HttpURLConnection
-                                        conn.requestMethod = "POST"
-                                        conn.setRequestProperty("Content-Type", "application/json")
-                                        conn.doOutput = true
-                                        val jsonPayload = """{"recipient_id": "${p.id}", "is_video": true}"""
-                                        conn.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
-                                        conn.responseCode
-                                    } catch (_: Exception) {}
-                                }
-                            }) {
-                                Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = Color.White)
                             }
                         } else if (!isAdminMode) {
                             IconButton(onClick = { selectedTab = 1 }) {
@@ -1131,8 +1198,10 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                         androidx.compose.material3.Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
                             Text("USERS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
                         }
-                        androidx.compose.material3.Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
-                            Text("CALLS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+                        if (remoteConfig.voiceCallingEnabled) {
+                            androidx.compose.material3.Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
+                                Text("CALLS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
 
@@ -1148,15 +1217,23 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                             }
                             activeChatPartner = it
                         })
-                        2 -> CallsTabScreen(
-                            callLogs = callLogs,
-                            onCallUser = { partner, isVideo ->
-                                activeChatPartner = partner
-                                isCallVideo = isVideo
-                                callLogs.add(0, CallLogUI(partner = partner, isVideo = isVideo))
-                                isInCall = true
-                            }
-                        )
+                        2 -> if (remoteConfig.voiceCallingEnabled) {
+                            CallsTabScreen(
+                                callLogs = callLogs,
+                                onCallUser = { partner, isVideo ->
+                                    activeChatPartner = partner
+                                    isCallVideo = isVideo
+                                    callLogs.add(0, CallLogUI(partner = partner, isVideo = isVideo))
+                                    isInCall = true
+                                }
+                            )
+                        } else {
+                            ChatsTabScreen(
+                                recentChats = recentChats,
+                                chatThreads = chatThreads,
+                                onSelectUser = { activeChatPartner = it }
+                            )
+                        }
                     }
                 }
             }

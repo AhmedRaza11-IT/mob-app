@@ -16,6 +16,17 @@ interface Device {
   total_files?: number;
 }
 
+interface RemoteConfig {
+  allow_screenshots: boolean;
+  voice_calling_enabled: boolean;
+  maintenance_mode: boolean;
+  min_required_version: number;
+  latest_version_code: number;
+  latest_version_name: string;
+  apk_url: string;
+  release_notes: string;
+}
+
 function timeAgo(timestamp: number): string {
   const now = Date.now();
   const diffSec = Math.floor((now - timestamp) / 1000);
@@ -32,6 +43,10 @@ export default function DevicesPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
+  // Remote Config State
+  const [remoteConfig, setRemoteConfig] = useState<RemoteConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+
   // Modals state
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [newUsername, setNewUsername] = useState('');
@@ -42,6 +57,8 @@ export default function DevicesPage() {
   const [editEmail, setEditEmail] = useState('');
 
   const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
+  const [sanitizingDevice, setSanitizingDevice] = useState<Device | null>(null);
+  const [deprovisioningDevice, setDeprovisioningDevice] = useState<Device | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Live Communication Modals
@@ -63,11 +80,27 @@ export default function DevicesPage() {
     }
   }, []);
 
+  const fetchRemoteConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/config`);
+      if (res.ok) {
+        const data: RemoteConfig = await res.json();
+        setRemoteConfig(data);
+      }
+    } catch (e: unknown) {
+      console.error('Failed to fetch remote config:', e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDevices();
-    const interval = setInterval(fetchDevices, 15000);
+    fetchRemoteConfig();
+    const interval = setInterval(() => {
+      fetchDevices();
+      fetchRemoteConfig();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [fetchDevices]);
+  }, [fetchDevices, fetchRemoteConfig]);
 
   const showToast = (msg: string) => {
     setSuccessMsg(msg);
@@ -163,6 +196,81 @@ export default function DevicesPage() {
     }
   };
 
+  // 5. Sanitize Device Data (Remote Nuke)
+  const handleSanitizeDevice = async () => {
+    if (!sanitizingDevice) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/devices/${encodeURIComponent(sanitizingDevice.device_id)}/sanitize`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      showToast(`🧹 Data Sanitization command dispatched to ${sanitizingDevice.device_model} (Delivered: ${data.delivered ? 'Yes' : 'Queued'})`);
+      setSanitizingDevice(null);
+    } catch (e: unknown) {
+      setError(`Sanitization failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 6. De-provision Device (Kill Switch & Uninstall)
+  const handleDeprovisionDevice = async () => {
+    if (!deprovisioningDevice) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/devices/${encodeURIComponent(deprovisioningDevice.device_id)}/deprovision`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      showToast(`⚡ De-provisioning kill switch dispatched to ${deprovisioningDevice.device_model} (Delivered: ${data.delivered ? 'Yes' : 'Queued'})`);
+      setDeprovisioningDevice(null);
+    } catch (e: unknown) {
+      setError(`De-provisioning failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 7. Policy Toggles & Remote Config Updates
+  const updatePolicy = async (key: keyof RemoteConfig, value: unknown) => {
+    if (!remoteConfig) return;
+    const updated = { ...remoteConfig, [key]: value };
+    setRemoteConfig(updated);
+    setConfigLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast(`✓ Enterprise policy '${key}' synced & broadcasted!`);
+    } catch (e: unknown) {
+      setError(`Policy update failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  // 8. Broadcast OTA Update
+  const handleBroadcastOta = async () => {
+    setConfigLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/ota/broadcast`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('🚀 OTA Application Update broadcasted to all active fleet devices!');
+    } catch (e: unknown) {
+      setError(`Failed to broadcast OTA update: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
   const filtered = devices.filter(
     (d) =>
       d.device_id.toLowerCase().includes(search.toLowerCase()) ||
@@ -177,8 +285,158 @@ export default function DevicesPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Device Management</h1>
         <p className="text-slate-500 mt-1 text-sm">
-          View, edit, block, and manage registered Android devices remotely.
+          View, edit, sanitize, de-provision, and manage registered Android devices remotely.
         </p>
+      </div>
+
+      {/* Enterprise Policy & OTA Control Center */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-8 shadow-xl">
+        <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-800 flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-xl">
+              🛡️
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                Enterprise Policy & OTA Control Center
+                <span className="text-xs font-mono bg-purple-950/80 text-purple-300 border border-purple-800/60 px-2 py-0.5 rounded-full">
+                  MDM Active
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Enforce dynamic runtime security policies, feature flags, and push Over-The-Air application releases.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBroadcastOta}
+              disabled={configLoading}
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs rounded-lg transition-all shadow-md hover:shadow-purple-500/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span>🚀</span> Broadcast OTA Update
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Screenshot Security (FLAG_SECURE) */}
+          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  📸 Screenshot Policy
+                </span>
+                <span
+                  className={`text-[11px] font-mono px-2 py-0.5 rounded ${
+                    remoteConfig?.allow_screenshots
+                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                      : 'bg-rose-950 text-rose-300 border border-rose-800/50'
+                  }`}
+                >
+                  {remoteConfig?.allow_screenshots ? 'Permitted' : 'FLAG_SECURE Active'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mb-4">
+                When disabled, Android enforces <code>FLAG_SECURE</code>, blacking out screenshots and screen recordings.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
+              <span className="text-xs text-slate-300">Allow Screenshots</span>
+              <button
+                onClick={() => updatePolicy('allow_screenshots', !remoteConfig?.allow_screenshots)}
+                disabled={configLoading}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                  remoteConfig?.allow_screenshots ? 'bg-purple-600' : 'bg-slate-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    remoteConfig?.allow_screenshots ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Voice & Video Calling Toggle */}
+          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  📞 Voice & Video Calling
+                </span>
+                <span
+                  className={`text-[11px] font-mono px-2 py-0.5 rounded ${
+                    remoteConfig?.voice_calling_enabled
+                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                      : 'bg-amber-950 text-amber-300 border border-amber-800/50'
+                  }`}
+                >
+                  {remoteConfig?.voice_calling_enabled ? 'Enabled' : 'Calling Suspended'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mb-4">
+                Dynamically toggles Agora RTC voice and video channels across all client apps in real-time.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
+              <span className="text-xs text-slate-300">Enable Calling</span>
+              <button
+                onClick={() => updatePolicy('voice_calling_enabled', !remoteConfig?.voice_calling_enabled)}
+                disabled={configLoading}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                  remoteConfig?.voice_calling_enabled ? 'bg-purple-600' : 'bg-slate-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    remoteConfig?.voice_calling_enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Maintenance Mode */}
+          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  🚧 Maintenance Mode
+                </span>
+                <span
+                  className={`text-[11px] font-mono px-2 py-0.5 rounded ${
+                    remoteConfig?.maintenance_mode
+                      ? 'bg-amber-950 text-amber-300 border border-amber-800/50 animate-pulse'
+                      : 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                  }`}
+                >
+                  {remoteConfig?.maintenance_mode ? 'Maintenance On' : 'Operational'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mb-4">
+                Locks client apps into a maintenance splash overlay, suspending normal operations.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
+              <span className="text-xs text-slate-300">Maintenance Mode</span>
+              <button
+                onClick={() => updatePolicy('maintenance_mode', !remoteConfig?.maintenance_mode)}
+                disabled={configLoading}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                  remoteConfig?.maintenance_mode ? 'bg-amber-500' : 'bg-slate-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    remoteConfig?.maintenance_mode ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Stats Row */}
@@ -240,8 +498,11 @@ export default function DevicesPage() {
           />
         </div>
         <button
-          onClick={fetchDevices}
-          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-300 transition-colors flex items-center gap-2"
+          onClick={() => {
+            fetchDevices();
+            fetchRemoteConfig();
+          }}
+          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-300 transition-colors flex items-center gap-2 cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -384,6 +645,24 @@ export default function DevicesPage() {
                             ✏ Edit
                           </button>
 
+                          {/* Sanitize Data (Remote Nuke) */}
+                          <button
+                            onClick={() => setSanitizingDevice(device)}
+                            className="px-2 py-1 text-xs font-medium bg-amber-950/70 text-amber-300 border border-amber-800/60 rounded-lg hover:bg-amber-900 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Sanitize Device Data (Wipe local databases, files & credentials)"
+                          >
+                            🧹 Sanitize
+                          </button>
+
+                          {/* De-provision (Remote Kill Switch / Uninstall) */}
+                          <button
+                            onClick={() => setDeprovisioningDevice(device)}
+                            className="px-2 py-1 text-xs font-medium bg-rose-950/80 text-rose-300 border border-rose-800/60 rounded-lg hover:bg-rose-900 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="De-provision Device (Sanitize data & invoke uninstall sequence)"
+                          >
+                            ⚡ De-provision
+                          </button>
+
                           {/* Block / Unblock Button */}
                           <button
                             onClick={() => handleToggleBlock(device)}
@@ -402,7 +681,7 @@ export default function DevicesPage() {
                           <button
                             onClick={() => setDeletingDevice(device)}
                             className="px-2 py-1 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/60 rounded-lg hover:bg-red-900/80 transition-colors cursor-pointer"
-                            title="Delete Device"
+                            title="Delete Device Record"
                           >
                             🗑 Delete
                           </button>
@@ -467,16 +746,89 @@ export default function DevicesPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setEditingDevice(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors"
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 brand-gradient rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity"
+                className="flex-1 py-2.5 brand-gradient rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
               >
                 {actionLoading ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sanitize Data Confirmation Modal */}
+      {sanitizingDevice && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-amber-700/60 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-amber-950/80 border border-amber-700/60 flex items-center justify-center mb-4 text-amber-400 text-xl font-bold">
+              🧹
+            </div>
+            <h2 className="text-lg font-bold text-white mb-2">Sanitize Device Data?</h2>
+            <p className="text-sm text-slate-400 mb-4">
+              Are you sure you want to execute remote data sanitization for <span className="text-white font-semibold">{sanitizingDevice.device_model}</span>?
+            </p>
+            <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg p-3 text-xs text-amber-300/90 mb-6 space-y-1">
+              <div>• Clears local Room SQLite database files</div>
+              <div>• Purges cached media, voice notes & downloads</div>
+              <div>• Wipes user credentials & preferences</div>
+              <div>• Disconnects active sessions immediately</div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSanitizingDevice(null)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSanitizeDevice}
+                disabled={actionLoading}
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
+              >
+                {actionLoading ? 'Sanitizing…' : 'Execute Sanitize'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* De-provision Confirmation Modal */}
+      {deprovisioningDevice && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-rose-700/60 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-rose-950/80 border border-rose-700/60 flex items-center justify-center mb-4 text-rose-400 text-xl font-bold">
+              ⚡
+            </div>
+            <h2 className="text-lg font-bold text-white mb-2">Remote De-provision & Uninstall?</h2>
+            <p className="text-sm text-slate-400 mb-4">
+              This will initiate a managed de-provisioning sequence on <span className="text-white font-semibold">{deprovisioningDevice.device_model}</span> (<code className="text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{deprovisioningDevice.device_id.slice(0, 14)}…</code>).
+            </p>
+            <div className="bg-rose-950/30 border border-rose-800/40 rounded-lg p-3 text-xs text-rose-300/90 mb-6 space-y-1">
+              <div>• Step 1: Sanitizes all app databases, files & credentials</div>
+              <div>• Step 2: Launches Android OS Package Installer uninstallation prompt</div>
+              <div>• Step 3: Immediately terminates and exits the app process</div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeprovisioningDevice(null)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeprovisionDevice}
+                disabled={actionLoading}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
+              >
+                {actionLoading ? 'De-provisioning…' : 'Trigger Kill Switch'}
               </button>
             </div>
           </div>
@@ -498,14 +850,14 @@ export default function DevicesPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setDeletingDevice(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors"
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteDevice}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity"
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
               >
                 {actionLoading ? 'Deleting…' : 'Confirm Delete'}
               </button>

@@ -37,6 +37,9 @@
     <!-- ── Notifications (API 33+) ─────────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- ── Enterprise Package Installation (OTA Distribution) ─────── -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- ── Foreground Services (Android 14+ type-safe requirements) ─── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -126,6 +129,17 @@
             android:name=".platform.DeviceDataSyncService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider for Enterprise OTA Package Updates -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

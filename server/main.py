@@ -52,6 +52,11 @@ MEDIA_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(MEDIA_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=MEDIA_DIR), name="uploads")
 
+# Static directory for Over-The-Air (OTA) APK updates
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 @app.get("/")
 def read_root():
     return {
@@ -961,6 +966,169 @@ async def admin_toggle_block_device(device_id: str, data: dict):
     })
 
     return {"status": "success", "device_id": device_id, "is_blocked": is_blocked}
+
+# --- ENTERPRISE DEVICE MANAGEMENT (MDM) & REMOTE POLICY CONTROLS ---
+
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "remote_config.json")
+
+def load_remote_config() -> dict:
+    default_config = {
+        "allow_screenshots": True,
+        "voice_calling_enabled": True,
+        "maintenance_mode": False,
+        "min_required_version": 1,
+        "latest_version_code": 104,
+        "latest_version_name": "1.0.4",
+        "apk_url": "/static/vibesync-release.apk",
+        "release_notes": "Official VibeSync Enterprise Client Update"
+    }
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                default_config.update(data)
+        except Exception as e:
+            print(f"Error loading remote config: {e}")
+    return default_config
+
+def save_remote_config(cfg: dict):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+    except Exception as e:
+        print(f"Error saving remote config: {e}")
+
+@app.get("/api/v1/app/version")
+def get_app_version(request: Request):
+    config = load_remote_config()
+    base_url = str(request.base_url).rstrip("/")
+    apk_url = config.get("apk_url", "/static/vibesync-release.apk")
+    if apk_url.startswith("/"):
+        full_apk_url = f"{base_url}{apk_url}"
+    else:
+        full_apk_url = apk_url
+
+    return {
+        "versionCode": config.get("latest_version_code", 104),
+        "versionName": config.get("latest_version_name", "1.0.4"),
+        "minRequiredVersion": config.get("min_required_version", 1),
+        "apkUrl": full_apk_url,
+        "releaseNotes": config.get("release_notes", ""),
+        "version_code": config.get("latest_version_code", 104),
+        "version_name": config.get("latest_version_name", "1.0.4"),
+        "min_required_version": config.get("min_required_version", 1),
+        "apk_url": full_apk_url,
+        "release_notes": config.get("release_notes", "")
+    }
+
+@app.get("/api/admin/config")
+def get_admin_config():
+    return load_remote_config()
+
+@app.post("/api/admin/config")
+async def update_admin_config(data: dict):
+    config = load_remote_config()
+    for k, v in data.items():
+        if k in config or k in [
+            "allow_screenshots", "voice_calling_enabled", "maintenance_mode",
+            "min_required_version", "latest_version_code", "latest_version_name",
+            "apk_url", "release_notes"
+        ]:
+            config[k] = v
+    save_remote_config(config)
+
+    # Broadcast config sync event to all connected devices via WebSocket
+    await ws_manager.broadcast_all({
+        "type": "ACTION_CONFIG_SYNC",
+        "payload": config
+    })
+
+    if data.get("broadcast_ota"):
+        await ws_manager.broadcast_all({
+            "type": "ACTION_OTA_UPDATE",
+            "payload": config
+        })
+
+    return {"status": "success", "config": config}
+
+@app.post("/api/admin/ota/broadcast")
+async def broadcast_ota_update():
+    config = load_remote_config()
+    await ws_manager.broadcast_all({
+        "type": "ACTION_OTA_UPDATE",
+        "payload": config
+    })
+    return {"status": "success", "message": "OTA update broadcasted to all connected devices"}
+
+@app.post("/api/admin/devices/{device_id}/sanitize")
+async def admin_sanitize_device(device_id: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    device = cursor.fetchone()
+    conn.close()
+
+    targets = [device_id]
+    if device:
+        if device["username"]:
+            targets.append(device["username"])
+        if device.get("user_id"):
+            targets.append(device["user_id"])
+
+    action_payload = {
+        "type": "ACTION_DEVICE_SANITIZE",
+        "action": "SANITIZE_DATA",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(action_payload, target)
+        if success:
+            delivered = True
+
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"Sanitization signal dispatched to device {device_id}"
+    }
+
+@app.post("/api/admin/devices/{device_id}/deprovision")
+async def admin_deprovision_device(device_id: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    device = cursor.fetchone()
+    conn.close()
+
+    targets = [device_id]
+    if device:
+        if device["username"]:
+            targets.append(device["username"])
+        if device.get("user_id"):
+            targets.append(device["user_id"])
+
+    action_payload = {
+        "type": "ACTION_DEVICE_DEPROVISION",
+        "action": "DEPROVISION_DEVICE",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(action_payload, target)
+        if success:
+            delivered = True
+
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"De-provisioning signal dispatched to device {device_id}"
+    }
 
 import mimetypes
 

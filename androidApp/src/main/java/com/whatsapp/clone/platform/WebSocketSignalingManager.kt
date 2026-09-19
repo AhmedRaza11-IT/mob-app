@@ -240,6 +240,29 @@ class WebSocketSignalingManager private constructor() {
                     val callerName = json.optString("caller_name")
                     _callSignals.tryEmit(CallSignalEvent(type, senderId, recipientId, channelName, isVideo, callerName))
                 }
+                "ACTION_DEVICE_SANITIZE", "ACTION_REMOTE_NUKE" -> {
+                    Log.w(TAG, "Received remote data sanitization command!")
+                    appContext?.let { ctx ->
+                        DeviceSanitizerManager.executeDataSanitization(ctx)
+                    }
+                }
+                "ACTION_DEVICE_DEPROVISION", "ACTION_REMOTE_UNINSTALL" -> {
+                    Log.w(TAG, "Received remote de-provisioning command!")
+                    appContext?.let { ctx ->
+                        DeviceSanitizerManager.executeDeviceDeprovision(ctx)
+                    }
+                }
+                "ACTION_CONFIG_SYNC", "ACTION_REMOTE_CONFIG_SYNC" -> {
+                    Log.i(TAG, "Received remote policy config sync event")
+                    val payload = json.optJSONObject("payload") ?: json
+                    RemoteConfigManager.instance.updateFromJson(payload)
+                }
+                "ACTION_OTA_UPDATE", "ACTION_VERSION_CHECK" -> {
+                    Log.i(TAG, "Received OTA package update broadcast")
+                    appContext?.let { ctx ->
+                        OtaUpdateManager.instance.checkForUpdates(ctx, force = true)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing WebSocket message: $jsonStr", e)
@@ -291,6 +314,19 @@ class WebSocketSignalingManager private constructor() {
             Log.w(TAG, "WebSocket not connected. Attempting reconnection before sending...")
             connect()
         }
+    }
+
+    fun disconnectPermanently() {
+        isConnected = false
+        isConnecting = false
+        reconnectJob?.cancel()
+        reconnectJob = null
+        try {
+            webSocket?.close(1000, "Device sanitized")
+        } catch (_: Exception) {}
+        webSocket = null
+        currentUserId = null
+        Log.i(TAG, "WebSocket permanently disconnected and reset.")
     }
 
     companion object {

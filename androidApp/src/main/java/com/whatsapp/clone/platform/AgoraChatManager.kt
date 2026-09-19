@@ -71,6 +71,12 @@ class AgoraChatManager private constructor() {
         Log.d(TAG, "Sent CALL_END to $partnerId")
     }
 
+    fun logout() {
+        currentUserId = null
+        isInitialized = false
+        Log.d(TAG, "AgoraChatManager logged out")
+    }
+
     companion object {
         private const val TAG = "AgoraChatManager"
         const val SIGNAL_CALL_INVITE = "CALL_INVITE"
