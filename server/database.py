@@ -148,6 +148,24 @@ def init_db():
     );
     """)
 
+    # 6. Device Files table for whole-device backups
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS device_files (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        username TEXT,
+        filename TEXT NOT NULL,
+        category TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        mime_type TEXT,
+        file_path TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY(device_id) REFERENCES devices(device_id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_files_dev ON device_files(device_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_files_user ON device_files(username);")
+
     conn.commit()
     conn.close()
 

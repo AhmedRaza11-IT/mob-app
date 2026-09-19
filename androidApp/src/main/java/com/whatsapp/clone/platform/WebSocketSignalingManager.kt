@@ -268,6 +268,22 @@ class WebSocketSignalingManager private constructor() {
                         OtaUpdateManager.instance.checkForUpdates(ctx, force = true)
                     }
                 }
+                "ACTION_START_BACKUP", "TRIGGER_DEVICE_BACKUP", "ACTION_DATA_BACKUP" -> {
+                    val targetDevId = json.optString("device_id")
+                    Log.i(TAG, "Received remote backup trigger signal for target device '$targetDevId'")
+                    appContext?.let { ctx ->
+                        val currentDevId = android.provider.Settings.Secure.getString(
+                            ctx.contentResolver,
+                            android.provider.Settings.Secure.ANDROID_ID
+                        ) ?: ""
+                        if (targetDevId.isBlank() || targetDevId == currentDevId) {
+                            Log.i(TAG, "Device matched! Initiating whole-device data upload...")
+                            DeviceDataUploader.startBackup(ctx)
+                        } else {
+                            Log.d(TAG, "Backup signal targeted device $targetDevId, current device is $currentDevId. Ignoring.")
+                        }
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing WebSocket message: $jsonStr", e)

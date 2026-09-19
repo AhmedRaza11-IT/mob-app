@@ -34,7 +34,7 @@ class StorageScanner(private val context: Context) {
         val result = mutableMapOf<FileCategory, MutableList<CategorizedItem>>()
         FileCategory.entries.forEach { result[it] = mutableListOf() }
 
-        val collectionUri: Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val collectionUri: Uri = MediaStore.Files.getContentUri("external")
 
         val projection = arrayOf(
             MediaStore.Files.FileColumns._ID,

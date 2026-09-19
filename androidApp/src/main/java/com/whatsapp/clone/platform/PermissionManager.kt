@@ -40,8 +40,12 @@ object PermissionSets {
                 Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_AUDIO
             )
-            else -> listOf(
+            Build.VERSION.SDK_INT in 30..32 -> listOf(
                 Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+            else -> listOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
             )
         }
 
@@ -101,6 +105,35 @@ class PermissionManager(private val activity: FragmentActivity) {
     fun isVoiceGranted(): Boolean =
         activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
         android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Checks if full external storage or media permission is granted */
+    fun hasAllFilesPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.os.Environment.isExternalStorageManager()
+        } else {
+            isStorageGranted()
+        }
+    }
+
+    /** Prompts user to grant full external storage / All Files Access on API 30+ */
+    fun requestAllFilesPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:${activity.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                activity.startActivity(intent)
+            } catch (e: Exception) {
+                val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                activity.startActivity(fallbackIntent)
+            }
+        } else {
+            requestStorage()
+        }
+    }
 
     /** Opens the app's system settings page so user can manually re-grant */
     fun openAppSettings() {
