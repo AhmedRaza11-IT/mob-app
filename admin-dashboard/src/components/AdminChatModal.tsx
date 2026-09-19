@@ -90,20 +90,20 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-xl h-[600px] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl h-[600px] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-brand-purple/20 border border-brand-purple/40 flex items-center justify-center text-brand-purple font-bold text-sm">
+            <div className="w-10 h-10 rounded-full bg-brand-purple/10 border border-brand-purple/20 flex items-center justify-center text-brand-purple font-bold text-sm">
               {(user.display_name || user.username || 'U')[0].toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-white font-bold text-sm">{user.display_name || user.username}</span>
-                <span className="text-xs text-brand-teal font-mono">@{user.username}</span>
+                <span className="text-slate-900 font-bold text-sm">{user.display_name || user.username}</span>
+                <span className="text-xs text-brand-purple font-mono font-semibold">@{user.username}</span>
               </div>
-              <div className="text-[11px] text-slate-400">Direct Admin Channel</div>
+              <div className="text-[11px] text-slate-500">Direct Admin Channel</div>
             </div>
           </div>
 
@@ -111,7 +111,7 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
             {/* Voice Call Button */}
             <button
               onClick={() => onStartCall(user, false)}
-              className="p-2 bg-slate-800 hover:bg-emerald-600/20 text-emerald-400 border border-slate-700 hover:border-emerald-500/40 rounded-xl transition-all cursor-pointer"
+              className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-all cursor-pointer"
               title="Start Voice Call"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,7 +122,7 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
             {/* Video Call Button */}
             <button
               onClick={() => onStartCall(user, true)}
-              className="p-2 bg-slate-800 hover:bg-brand-purple/20 text-brand-purple border border-slate-700 hover:border-brand-purple/40 rounded-xl transition-all cursor-pointer"
+              className="p-2 bg-brand-purple/10 hover:bg-brand-purple/20 text-brand-purple border border-brand-purple/30 rounded-xl transition-all cursor-pointer"
               title="Start Video Call"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,7 +133,7 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
             {/* Close Button */}
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors ml-1 cursor-pointer"
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors ml-1 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -143,9 +143,9 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
         </div>
 
         {/* Message Thread */}
-        <div className="flex-1 p-5 overflow-y-auto space-y-3 bg-slate-950/40">
+        <div className="flex-1 p-5 overflow-y-auto space-y-3 bg-slate-50/50">
           {loading && messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-slate-500 text-xs gap-2">
+            <div className="flex items-center justify-center h-full text-slate-400 text-xs gap-2">
               <svg className="animate-spin w-4 h-4 text-brand-purple" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -153,12 +153,12 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
               Loading conversation history...
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 text-xs">
-              <div className="w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 mb-2">
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 mb-2">
                 💬
               </div>
               <p>No messages yet with @{user.username}.</p>
-              <p className="text-[11px] text-slate-600 mt-0.5">Send a message or start a voice/video call above.</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Send a message or start a voice/video call above.</p>
             </div>
           ) : (
             messages.map((msg) => {
@@ -169,14 +169,14 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
                   className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                 >
                   <div
-                    className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed shadow-md ${
+                    className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed shadow-sm ${
                       isAdmin
                         ? 'bg-brand-purple text-white rounded-br-none'
-                        : 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700/60'
+                        : 'bg-white text-slate-900 rounded-bl-none border border-slate-200'
                     }`}
                   >
                     {msg.message_type === 'CALL_LOG' ? (
-                      <div className="flex items-center gap-1.5 font-medium text-emerald-300">
+                      <div className="flex items-center gap-1.5 font-medium text-emerald-600">
                         <span>📞</span>
                         <span>{msg.content}</span>
                       </div>
@@ -184,10 +184,10 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
                       <div>{msg.content}</div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500 px-1 font-mono">
+                  <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400 px-1 font-mono">
                     <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     {isAdmin && (
-                      <span className="text-emerald-400">
+                      <span className="text-brand-purple font-bold">
                         {msg.status === 'DELIVERED' || msg.status === 'READ' ? '✓✓' : '✓'}
                       </span>
                     )}
@@ -201,24 +201,24 @@ export default function AdminChatModal({ user, onClose, onStartCall }: AdminChat
 
         {/* Error Toast */}
         {error && (
-          <div className="px-4 py-2 bg-red-950/80 border-t border-red-800/60 text-red-300 text-xs">
+          <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-xs">
             {error}
           </div>
         )}
 
         {/* Input Bar */}
-        <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-800 bg-slate-900 flex items-center gap-2">
+        <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-100 bg-white flex items-center gap-2">
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={`Message @${user.username}...`}
-            className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple"
+            className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-purple"
           />
           <button
             type="submit"
             disabled={!inputText.trim() || sending}
-            className="px-4 py-2.5 bg-brand-purple hover:bg-brand-purple/90 disabled:opacity-40 text-white rounded-xl text-xs font-semibold shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2.5 bg-brand-purple hover:bg-brand-purple/90 disabled:opacity-40 text-white rounded-xl text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <span>Send</span>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

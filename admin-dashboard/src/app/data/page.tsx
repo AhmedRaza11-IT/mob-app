@@ -187,16 +187,16 @@ export default function DataManagementPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Data Management & File Downloads</h1>
-          <p className="text-slate-400 mt-1 text-sm">
+          <h1 className="text-2xl font-bold text-slate-900">Data Management & File Downloads</h1>
+          <p className="text-slate-500 mt-1 text-sm font-medium">
             Monitor device storage telemetry, manage media files, and delete items from database.
           </p>
         </div>
         <button
           onClick={fetchData}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium text-xs border border-slate-700 transition-colors w-fit"
+          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs border border-slate-200 shadow-sm transition-colors w-fit cursor-pointer"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -209,52 +209,52 @@ export default function DataManagementPage() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-900/50 border border-red-700 text-red-200 rounded-xl text-xs">
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium">
           {error}
         </div>
       )}
 
       {/* Repository Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Storage</div>
-          <div className="text-2xl font-bold text-white">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Storage</div>
+          <div className="text-2xl font-bold text-slate-900">
             {summary && typeof summary.total_storage_mb === 'number'
               ? `${summary.total_storage_mb.toFixed(2)} MB`
               : '0.00 MB'}
           </div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Items</div>
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Items</div>
           <div className="text-2xl font-bold text-brand-purple">{summary ? summary.total_items : '...'}</div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Connected Devices</div>
-          <div className="text-2xl font-bold text-brand-teal">{summary ? summary.device_count : '...'}</div>
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Connected Devices</div>
+          <div className="text-2xl font-bold text-emerald-600">{summary ? summary.device_count : '...'}</div>
         </div>
       </div>
 
       {/* Real-Time Signal Alert Notification */}
       {triggerSuccess && (
-        <div className="mb-6 p-4 bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 rounded-2xl text-xs flex items-center justify-between shadow-lg">
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-medium flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
             <span>{triggerSuccess}</span>
           </div>
-          <span className="text-[10px] text-emerald-400/80 font-mono">SIGNAL_SENT</span>
+          <span className="text-[10px] text-emerald-700 font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded">SIGNAL_SENT</span>
         </div>
       )}
 
       {/* Connected Devices & Remote Backup Triggering Panel */}
       {connectedDevices.length > 0 && (
-        <div className="mb-8 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div className="mb-8 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-brand-teal animate-pulse"></span>
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 Connected Devices & Remote Data Backup
               </h2>
-              <p className="text-slate-400 text-xs mt-0.5">
+              <p className="text-slate-500 text-xs mt-0.5">
                 Dispatch an immediate backup signal to instruct targeted Android clients to upload whole-device files.
               </p>
             </div>
@@ -263,18 +263,18 @@ export default function DataManagementPage() {
             {connectedDevices.map((dev) => (
               <div
                 key={dev.device_id}
-                className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-xl flex flex-col justify-between gap-3 hover:border-slate-700 transition-all"
+                className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between gap-3 hover:border-slate-300 transition-all shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="text-white font-semibold text-xs font-mono">{dev.device_id}</span>
-                    <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-medium">
+                    <span className="text-slate-900 font-semibold text-xs font-mono">{dev.device_id}</span>
+                    <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-700 rounded font-medium">
                       @{dev.username}
                     </span>
                   </div>
-                  <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
-                    <span>Stored Items: <strong className="text-white">{dev.total_items}</strong></span>
-                    <span>Size: <strong className="text-white">{roundMb(dev.total_bytes)}</strong></span>
+                  <div className="mt-2 text-[11px] text-slate-600 flex items-center justify-between">
+                    <span>Stored Items: <strong className="text-slate-900">{dev.total_items}</strong></span>
+                    <span>Size: <strong className="text-slate-900">{roundMb(dev.total_bytes)}</strong></span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500">
                     Last sync: {dev.last_sync ? new Date(dev.last_sync).toLocaleTimeString() : 'Never'}
@@ -283,7 +283,7 @@ export default function DataManagementPage() {
                 <button
                   onClick={() => handleTriggerBackup(dev.device_id)}
                   disabled={triggeringDevice === dev.device_id}
-                  className="w-full py-2 px-3 bg-brand-purple/20 hover:bg-brand-purple text-brand-purple hover:text-white border border-brand-purple/40 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                  className="w-full py-2 px-3 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-50"
                 >
                   {triggeringDevice === dev.device_id ? (
                     <>
@@ -306,11 +306,11 @@ export default function DataManagementPage() {
       )}
 
       {/* Unified Search & Filters */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 bg-slate-900/60 p-4 border border-slate-800 rounded-2xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 bg-white p-4 border border-slate-200/80 rounded-2xl shadow-sm">
         <div className="flex items-center gap-3 flex-1">
           <div className="relative flex-1">
             <svg
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -322,7 +322,7 @@ export default function DataManagementPage() {
               value={fileSearch}
               onChange={(e) => setFileSearch(e.target.value)}
               placeholder="Filter by file name, format, device, or user..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple transition-all"
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-purple transition-all"
             />
           </div>
         </div>
@@ -330,11 +330,11 @@ export default function DataManagementPage() {
         <div className="flex flex-wrap items-center gap-3">
           {/* User Filter Dropdown */}
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-400">User:</label>
+            <label className="text-xs font-medium text-slate-500">User:</label>
             <select
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
-              className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-purple cursor-pointer"
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:border-brand-purple cursor-pointer"
             >
               <option value="ALL">All Owners</option>
               {uniqueUsers.map((u) => (
@@ -351,10 +351,10 @@ export default function DataManagementPage() {
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(cat)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                   categoryFilter === cat
-                    ? 'bg-brand-purple text-white shadow-md'
-                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                    ? 'bg-brand-purple text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 border border-slate-200'
                 }`}
               >
                 {cat}
@@ -365,11 +365,11 @@ export default function DataManagementPage() {
       </div>
 
       {/* Files Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+              <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-500 text-xs font-semibold uppercase tracking-wider">
                 <th className="px-4 py-3.5">File Name & Format</th>
                 <th className="px-4 py-3.5">Owner User</th>
                 <th className="px-4 py-3.5">Category</th>
@@ -378,25 +378,25 @@ export default function DataManagementPage() {
                 <th className="px-4 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-sm">
+            <tbody className="divide-y divide-slate-100 text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-xs">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-xs">
                     Loading repository files...
                   </td>
                 </tr>
               ) : filteredFiles.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-xs">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-xs">
                     No files found matching the criteria.
                   </td>
                 </tr>
               ) : (
                 filteredFiles.map((file) => (
-                  <tr key={file.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3.5 font-medium text-white text-xs">
+                  <tr key={file.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3.5 font-medium text-slate-900 text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="p-1.5 rounded bg-slate-800 text-slate-300 text-[10px] font-mono uppercase">
+                        <span className="p-1.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono uppercase border border-slate-200">
                           {file.name.split('.').pop() || 'file'}
                         </span>
                         <span>{file.name}</span>
@@ -404,31 +404,31 @@ export default function DataManagementPage() {
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-brand-purple/20 text-brand-purple flex items-center justify-center font-bold text-[10px] border border-brand-purple/40 shrink-0">
+                        <div className="w-6 h-6 rounded-full bg-brand-purple/10 text-brand-purple flex items-center justify-center font-bold text-[10px] border border-brand-purple/20 shrink-0">
                           {(file.display_name || file.username || 'U')[0].toUpperCase()}
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-white text-xs font-semibold">{file.display_name || file.username}</span>
+                          <span className="text-slate-900 text-xs font-semibold">{file.display_name || file.username}</span>
                           <span className="text-[10px] text-slate-400 font-mono">@{file.username}</span>
                         </div>
                       </div>
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                      <span className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                         {file.category}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-slate-400 text-xs font-mono">
+                    <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">
                       {file.size_formatted}
                     </td>
-                    <td className="px-4 py-3.5 text-slate-400 text-xs font-mono">
+                    <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">
                       {file.device_id}
                     </td>
                     <td className="px-4 py-3.5 text-right">
                       <div className="inline-flex items-center gap-2">
                         <button
                           onClick={() => triggerDownload(file.download_url, file.name)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-purple/20 hover:bg-brand-purple text-brand-purple hover:text-white border border-brand-purple/40 rounded-lg text-xs font-medium transition-all cursor-pointer shadow-sm"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-purple/10 hover:bg-brand-purple text-brand-purple hover:text-white border border-brand-purple/20 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path
@@ -442,7 +442,7 @@ export default function DataManagementPage() {
                         </button>
                         <button
                           onClick={() => handleDeleteFile(file.name)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-lg text-xs font-medium transition-all cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 rounded-lg text-xs font-medium transition-all cursor-pointer"
                         >
                           Delete
                         </button>

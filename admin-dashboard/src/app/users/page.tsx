@@ -195,8 +195,8 @@ export default function UsersPage() {
       {/* Page Header + Create User Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">User Registry & Directory</h1>
-          <p className="text-slate-400 mt-1 text-sm">
+          <h1 className="text-2xl font-bold text-slate-900">User Registry & Directory</h1>
+          <p className="text-slate-500 mt-1 text-sm font-medium">
             Manage, filter, search, and perform CRUD actions on all registered VibeSync profiles.
           </p>
         </div>
@@ -205,7 +205,7 @@ export default function UsersPage() {
             setFormData({ username: '', display_name: '', bio: '', is_banned: false });
             setShowCreateModal(true);
           }}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-purple hover:bg-brand-purple/90 text-white rounded-xl font-medium text-xs shadow-lg shadow-brand-purple/20 transition-all cursor-pointer"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold text-xs shadow-sm transition-all cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -216,38 +216,38 @@ export default function UsersPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-          <div className="text-3xl font-bold text-brand-teal">{users.length}</div>
-          <div className="text-xs text-slate-500 mt-1">Total Users</div>
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-3xl font-bold text-teal-600">{users.length}</div>
+          <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">Total Users</div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-          <div className="text-3xl font-bold text-brand-purple">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-3xl font-bold text-purple-600">
             {users.filter((u) => Date.now() - u.created_at < 86400000).length}
           </div>
-          <div className="text-xs text-slate-500 mt-1">Active Today</div>
+          <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">Active Today</div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-          <div className="text-3xl font-bold text-sky-400">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-3xl font-bold text-sky-600">
             {users.filter((u) => u.device_id).length}
           </div>
-          <div className="text-xs text-slate-500 mt-1">Linked Devices</div>
+          <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">Linked Devices</div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-          <div className="text-3xl font-bold text-red-400">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+          <div className="text-3xl font-bold text-rose-600">
             {users.filter((u) => u.is_banned).length}
           </div>
-          <div className="text-xs text-slate-500 mt-1">Banned Accounts</div>
+          <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">Banned Accounts</div>
         </div>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-900/50 border border-red-700 text-red-200 rounded-xl text-xs">
+        <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-medium shadow-sm">
           {error}
         </div>
       )}
 
       {/* UNIFIED FILTER TOOLBAR: Search Bar + Status Dropdown + Sort Dropdown */}
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl mb-6 shadow-md">
+      <div className="bg-white border border-slate-200/80 p-4 rounded-2xl mb-6 shadow-sm">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
           
           {/* Unified Search Input */}
@@ -270,7 +270,7 @@ export default function UsersPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by @username, display name, bio…"
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-purple-600 transition-all"
             />
           </div>
 
@@ -278,11 +278,11 @@ export default function UsersPage() {
           <div className="flex items-center gap-3">
             {/* Status Filter Dropdown */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium hidden sm:inline">Status:</span>
+              <span className="text-xs text-slate-500 font-medium hidden sm:inline">Status:</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
-                className="px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-brand-purple transition-all cursor-pointer font-medium"
+                className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-purple-600 transition-all cursor-pointer font-medium"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="ACTIVE">⚡ Active Today</option>
@@ -294,11 +294,11 @@ export default function UsersPage() {
 
             {/* Sort Dropdown */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium hidden sm:inline">Sort:</span>
+              <span className="text-xs text-slate-500 font-medium hidden sm:inline">Sort:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
-                className="px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-brand-purple transition-all cursor-pointer font-medium"
+                className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-purple-600 transition-all cursor-pointer font-medium"
               >
                 <option value="NEWEST">Joined (Newest)</option>
                 <option value="OLDEST">Joined (Oldest)</option>
@@ -309,9 +309,9 @@ export default function UsersPage() {
         </div>
 
         {/* Filter Badges Summary */}
-        <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-3 border-t border-slate-800/80">
+        <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
           <div>
-            Showing <span className="text-white font-semibold">{filteredAndSorted.length}</span> of {users.length} users
+            Showing <span className="text-slate-800 font-semibold">{filteredAndSorted.length}</span> of {users.length} users
           </div>
           {(search || statusFilter !== 'ALL' || sortBy !== 'NEWEST') && (
             <button
@@ -320,7 +320,7 @@ export default function UsersPage() {
                 setStatusFilter('ALL');
                 setSortBy('NEWEST');
               }}
-              className="text-brand-purple hover:underline text-xs"
+              className="text-purple-600 hover:text-purple-700 font-semibold hover:underline text-xs"
             >
               Reset Filters
             </button>
@@ -329,30 +329,30 @@ export default function UsersPage() {
       </div>
 
       {/* Users Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-slate-800 bg-slate-800/50">
-              <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <tr className="border-b border-slate-200/80 bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider">
+              <th className="px-4 py-3.5">
                 User Profile
               </th>
-              <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="px-4 py-3.5">
                 Status / Bio
               </th>
-              <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="px-4 py-3.5">
                 Joined
               </th>
-              <th className="text-right px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="px-4 py-3.5 text-right">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-12 text-center text-slate-500">
-                  <div className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin w-4 h-4 text-brand-purple" fill="none" viewBox="0 0 24 24">
+                <td colSpan={4} className="px-4 py-12 text-center text-slate-400">
+                  <div className="flex items-center justify-center gap-2 font-medium">
+                    <svg className="animate-spin w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
@@ -362,41 +362,41 @@ export default function UsersPage() {
               </tr>
             ) : filteredAndSorted.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-12 text-center text-slate-500">
+                <td colSpan={4} className="px-4 py-12 text-center text-slate-400 font-medium">
                   No users match the selected search & filter criteria.
                 </td>
               </tr>
             ) : (
               filteredAndSorted.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-800/40 transition-colors">
+                <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-brand-teal text-xs">
+                      <div className="w-9 h-9 rounded-full bg-purple-50 border border-purple-200 flex items-center justify-center font-bold text-purple-700 text-xs">
                         {user.username.charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-brand-teal font-mono font-semibold">@{user.username}</span>
+                          <span className="text-slate-900 font-mono font-semibold">@{user.username}</span>
                           {user.is_banned ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-red-950 text-red-400 border border-red-800 font-bold">
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-50 text-rose-700 border border-rose-200 font-bold">
                               BANNED
                             </span>
                           ) : null}
                         </div>
-                        <div className="text-white text-xs font-medium">{user.display_name}</div>
+                        <div className="text-slate-500 text-xs font-medium">{user.display_name}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3.5 text-slate-400 text-xs max-w-xs truncate">
+                  <td className="px-4 py-3.5 text-slate-600 text-xs max-w-xs truncate font-medium">
                     {user.bio ?? 'Available | Powered by VibeSync'}
                   </td>
-                  <td className="px-4 py-3.5 text-slate-500 text-xs">{timeAgo(user.created_at)}</td>
+                  <td className="px-4 py-3.5 text-slate-500 font-medium text-xs">{timeAgo(user.created_at)}</td>
                   <td className="px-4 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1.5 flex-wrap">
                       {/* Message Button */}
                       <button
                         onClick={() => setChatTargetUser(user)}
-                        className="px-2.5 py-1 bg-brand-purple/20 hover:bg-brand-purple text-brand-purple hover:text-white border border-brand-purple/40 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
                         title={`Message @${user.username}`}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -411,7 +411,7 @@ export default function UsersPage() {
                           setCallTargetUser(user);
                           setIsCallVideo(false);
                         }}
-                        className="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-800 text-emerald-300 border border-emerald-700/60 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
                         title={`Voice Call @${user.username}`}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,7 +426,7 @@ export default function UsersPage() {
                           setCallTargetUser(user);
                           setIsCallVideo(true);
                         }}
-                        className="px-2.5 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 border border-sky-700/60 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
                         title={`Video Call @${user.username}`}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -446,7 +446,7 @@ export default function UsersPage() {
                             is_banned: Boolean(user.is_banned),
                           });
                         }}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                       >
                         Edit
                       </button>
@@ -454,10 +454,10 @@ export default function UsersPage() {
                       {/* Ban / Unban Toggle */}
                       <button
                         onClick={() => handleToggleBan(user)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
                           user.is_banned
-                            ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800'
-                            : 'bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-800'
+                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
                         }`}
                       >
                         {user.is_banned ? 'Unban' : 'Ban'}
@@ -466,7 +466,7 @@ export default function UsersPage() {
                       {/* Delete Button */}
                       <button
                         onClick={() => setDeletingUser(user)}
-                        className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                        className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                       >
                         Delete
                       </button>
@@ -481,12 +481,12 @@ export default function UsersPage() {
 
       {/* CREATE USER MODAL */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4">Create New User Profile</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-base font-bold text-slate-900 mb-4">Create New User Profile</h2>
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Username (@)
                 </label>
                 <input
@@ -495,12 +495,12 @@ export default function UsersPage() {
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   placeholder="e.g. john_doe"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Display Name
                 </label>
                 <input
@@ -508,18 +508,18 @@ export default function UsersPage() {
                   value={formData.display_name}
                   onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                   placeholder="John Doe"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Bio</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Bio</label>
                 <input
                   type="text"
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
                   placeholder="Available | Powered by VibeSync"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
                 />
               </div>
 
@@ -529,24 +529,24 @@ export default function UsersPage() {
                   id="create_banned"
                   checked={formData.is_banned}
                   onChange={(e) => setFormData({ ...formData, is_banned: e.target.checked })}
-                  className="rounded bg-slate-950 border-slate-800 text-brand-purple"
+                  className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                 />
-                <label htmlFor="create_banned" className="text-xs text-slate-300">
+                <label htmlFor="create_banned" className="text-xs font-medium text-slate-700">
                   Mark as Banned Account
                 </label>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-medium hover:bg-slate-700"
+                  className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-brand-purple text-white rounded-xl text-xs font-medium hover:bg-brand-purple/90"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-semibold hover:bg-purple-700 transition-colors shadow-sm"
                 >
                   Create User
                 </button>
@@ -558,29 +558,29 @@ export default function UsersPage() {
 
       {/* EDIT USER MODAL */}
       {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4">Edit @{editingUser.username}</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-base font-bold text-slate-900 mb-4">Edit @{editingUser.username}</h2>
             <form onSubmit={handleUpdateUser} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Display Name
                 </label>
                 <input
                   type="text"
                   value={formData.display_name}
                   onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Bio</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Bio</label>
                 <input
                   type="text"
                   value={formData.bio}
                   onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600"
                 />
               </div>
 
@@ -590,24 +590,24 @@ export default function UsersPage() {
                   id="edit_banned"
                   checked={formData.is_banned}
                   onChange={(e) => setFormData({ ...formData, is_banned: e.target.checked })}
-                  className="rounded bg-slate-950 border-slate-800 text-brand-purple"
+                  className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                 />
-                <label htmlFor="edit_banned" className="text-xs text-slate-300">
+                <label htmlFor="edit_banned" className="text-xs font-medium text-slate-700">
                   Account Banned Status
                 </label>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setEditingUser(null)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-medium hover:bg-slate-700"
+                  className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-brand-purple text-white rounded-xl text-xs font-medium hover:bg-brand-purple/90"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-semibold hover:bg-purple-700 transition-colors shadow-sm"
                 >
                   Save Changes
                 </button>
@@ -619,22 +619,22 @@ export default function UsersPage() {
 
       {/* DELETE USER CONFIRMATION MODAL */}
       {deletingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-2">Delete User Account?</h2>
-            <p className="text-xs text-slate-400 mb-6">
-              Are you sure you want to delete <span className="text-brand-teal font-semibold">@{deletingUser.username}</span>? This will unlink associated devices.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-rose-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-base font-bold text-slate-900 mb-2">Delete User Account?</h2>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              Are you sure you want to delete <span className="text-slate-900 font-semibold">@{deletingUser.username}</span>? This will unlink associated devices.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeletingUser(null)}
-                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-medium hover:bg-slate-700"
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteUser}
-                className="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-medium hover:bg-red-700"
+                className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-semibold hover:bg-rose-700 transition-colors shadow-sm"
               >
                 Yes, Delete User
               </button>

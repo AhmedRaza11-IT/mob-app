@@ -268,17 +268,17 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
   };
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col">
         {/* Top Bar / Header */}
-        <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-brand-purple/20 border border-brand-purple/40 flex items-center justify-center text-brand-purple font-bold">
+            <div className="w-10 h-10 rounded-full bg-brand-purple/10 border border-brand-purple/20 flex items-center justify-center text-brand-purple font-bold">
               {(user.display_name || user.username || 'U')[0].toUpperCase()}
             </div>
             <div>
-              <h4 className="text-white font-bold text-sm leading-tight">{user.display_name || user.username}</h4>
-              <p className="text-slate-400 text-xs font-mono">@{user.username}</p>
+              <h4 className="text-slate-900 font-bold text-sm leading-tight">{user.display_name || user.username}</h4>
+              <p className="text-slate-500 text-xs font-mono">@{user.username}</p>
             </div>
           </div>
 
@@ -286,20 +286,20 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
             <span
               className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 ${
                 callStatus === 'CONNECTED'
-                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : callStatus === 'RINGING'
-                  ? 'bg-amber-950 text-amber-400 border border-amber-800 animate-pulse'
-                  : 'bg-slate-800 text-slate-400'
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                  : 'bg-slate-100 text-slate-600'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${callStatus === 'CONNECTED' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className={`w-2 h-2 rounded-full ${callStatus === 'CONNECTED' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
               {callStatus === 'CONNECTED' ? formatDuration(callDuration) : callStatus}
             </span>
           </div>
         </div>
 
         {/* Video / Call Container */}
-        <div className="relative bg-slate-950 w-full h-[360px] flex items-center justify-center overflow-hidden">
+        <div className="relative bg-slate-900 w-full h-[360px] flex items-center justify-center overflow-hidden">
           {/* Remote Video Stream */}
           <div ref={remoteVideoRef} className="w-full h-full object-cover flex items-center justify-center" />
 
@@ -326,7 +326,7 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
 
           {/* Media Warning Notice (Graceful permission denial / listener mode) */}
           {mediaWarning && (
-            <div className="absolute top-4 left-4 right-4 p-3 bg-amber-950/90 border border-amber-700/80 text-amber-200 rounded-xl text-xs z-20 flex items-center justify-between gap-3 shadow-lg">
+            <div className="absolute top-4 left-4 right-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs z-20 flex items-center justify-between gap-3 shadow-md">
               <div className="flex items-center gap-2">
                 <span className="text-base flex-shrink-0">⚠️</span>
                 <span>{mediaWarning}</span>
@@ -342,21 +342,21 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
 
           {/* Error Message */}
           {error && (
-            <div className="absolute top-4 left-4 right-4 p-3 bg-red-950/90 border border-red-800 text-red-300 rounded-xl text-xs z-20">
+            <div className="absolute top-4 left-4 right-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs z-20">
               {error}
             </div>
           )}
         </div>
 
         {/* Bottom Call Controls */}
-        <div className="p-6 bg-slate-900 border-t border-slate-800 flex items-center justify-center gap-6">
+        <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-6">
           {/* Mute Mic Button */}
           <button
             onClick={toggleMute}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ${
               isMuted
-                ? 'bg-amber-950/80 border-amber-700 text-amber-300 hover:bg-amber-900'
-                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                ? 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
             }`}
             title={isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
           >
@@ -373,10 +373,10 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
           {isVideo && (
             <button
               onClick={toggleVideo}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+              className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-sm ${
                 !isVideoEnabled
-                  ? 'bg-amber-950/80 border-amber-700 text-amber-300 hover:bg-amber-900'
-                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                  ? 'bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
               }`}
               title={isVideoEnabled ? 'Turn Off Camera' : 'Turn On Camera'}
             >

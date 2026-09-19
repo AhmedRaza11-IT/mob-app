@@ -48,9 +48,6 @@ export default function DevicesPage() {
   const [configLoading, setConfigLoading] = useState(false);
 
   // Modals state
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [newUsername, setNewUsername] = useState('');
-
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [editModel, setEditModel] = useState('');
   const [editUsername, setEditUsername] = useState('');
@@ -107,32 +104,7 @@ export default function DevicesPage() {
     setTimeout(() => setSuccessMsg(null), 4000);
   };
 
-  // 1. Assign Username
-  const assignUsername = async () => {
-    if (!selectedDevice || !newUsername.trim()) return;
-    setActionLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/assign-username`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_device_id: selectedDevice.device_id,
-          assigned_username: newUsername.trim(),
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast(`✓ Assigned @${newUsername.trim()} to ${selectedDevice.device_model}`);
-      setSelectedDevice(null);
-      setNewUsername('');
-      await fetchDevices();
-    } catch (e: unknown) {
-      setError(`Assignment failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // 2. Edit Device
+  // Edit Device
   const handleSaveEdit = async () => {
     if (!editingDevice) return;
     setActionLoading(true);
@@ -157,7 +129,7 @@ export default function DevicesPage() {
     }
   };
 
-  // 3. Block / Unblock Device
+  // Block / Unblock Device
   const handleToggleBlock = async (device: Device) => {
     const nextBlockState = !device.is_blocked;
     setActionLoading(true);
@@ -177,7 +149,7 @@ export default function DevicesPage() {
     }
   };
 
-  // 4. Delete Device
+  // Delete Device
   const handleDeleteDevice = async () => {
     if (!deletingDevice) return;
     setActionLoading(true);
@@ -196,7 +168,7 @@ export default function DevicesPage() {
     }
   };
 
-  // 5. Sanitize Device Data (Remote Nuke)
+  // Sanitize Device Data (Remote Nuke)
   const handleSanitizeDevice = async () => {
     if (!sanitizingDevice) return;
     setActionLoading(true);
@@ -215,7 +187,7 @@ export default function DevicesPage() {
     }
   };
 
-  // 6. De-provision Device (Kill Switch & Uninstall)
+  // De-provision Device (Kill Switch & Uninstall)
   const handleDeprovisionDevice = async () => {
     if (!deprovisioningDevice) return;
     setActionLoading(true);
@@ -234,7 +206,7 @@ export default function DevicesPage() {
     }
   };
 
-  // 7. Policy Toggles & Remote Config Updates
+  // Policy Toggles & Remote Config Updates
   const updatePolicy = async (key: keyof RemoteConfig, value: unknown) => {
     if (!remoteConfig) return;
     const updated = { ...remoteConfig, [key]: value };
@@ -255,7 +227,7 @@ export default function DevicesPage() {
     }
   };
 
-  // 8. Broadcast OTA Update
+  // Broadcast OTA Update
   const handleBroadcastOta = async () => {
     setConfigLoading(true);
     try {
@@ -280,30 +252,30 @@ export default function DevicesPage() {
   );
 
   return (
-    <div className="p-8">
+    <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Device Management</h1>
-        <p className="text-slate-500 mt-1 text-sm">
+        <h1 className="text-2xl font-bold text-slate-900">Device Management</h1>
+        <p className="text-slate-500 mt-1 text-sm font-medium">
           View, edit, sanitize, de-provision, and manage registered Android devices remotely.
         </p>
       </div>
 
       {/* Enterprise Policy & OTA Control Center */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-8 shadow-xl">
-        <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-800 flex-wrap gap-4">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 mb-8 shadow-sm">
+        <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-100 flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-xl">
+            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200/60 flex items-center justify-center text-xl">
               🛡️
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 Enterprise Policy & OTA Control Center
-                <span className="text-xs font-mono bg-purple-950/80 text-purple-300 border border-purple-800/60 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 rounded-full">
                   MDM Active
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Enforce dynamic runtime security policies, feature flags, and push Over-The-Air application releases.
               </p>
             </div>
@@ -312,46 +284,46 @@ export default function DevicesPage() {
             <button
               onClick={handleBroadcastOta}
               disabled={configLoading}
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs rounded-lg transition-all shadow-md hover:shadow-purple-500/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <span>🚀</span> Broadcast OTA Update
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Screenshot Security (FLAG_SECURE) */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between">
+          <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   📸 Screenshot Policy
                 </span>
                 <span
-                  className={`text-[11px] font-mono px-2 py-0.5 rounded ${
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
                     remoteConfig?.allow_screenshots
-                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
-                      : 'bg-rose-950 text-rose-300 border border-rose-800/50'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
                   }`}
                 >
                   {remoteConfig?.allow_screenshots ? 'Permitted' : 'FLAG_SECURE Active'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mb-4">
-                When disabled, Android enforces <code>FLAG_SECURE</code>, blacking out screenshots and screen recordings.
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                When disabled, Android enforces <code className="bg-slate-200/70 text-slate-700 px-1 py-0.5 rounded text-[11px]">FLAG_SECURE</code>, blacking out screenshots and recordings.
               </p>
             </div>
-            <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
-              <span className="text-xs text-slate-300">Allow Screenshots</span>
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200/60">
+              <span className="text-xs font-medium text-slate-600">Allow Screenshots</span>
               <button
                 onClick={() => updatePolicy('allow_screenshots', !remoteConfig?.allow_screenshots)}
                 disabled={configLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                  remoteConfig?.allow_screenshots ? 'bg-purple-600' : 'bg-slate-700'
+                  remoteConfig?.allow_screenshots ? 'bg-purple-600' : 'bg-slate-300'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
                     remoteConfig?.allow_screenshots ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -360,37 +332,37 @@ export default function DevicesPage() {
           </div>
 
           {/* Voice & Video Calling Toggle */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between">
+          <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   📞 Voice & Video Calling
                 </span>
                 <span
-                  className={`text-[11px] font-mono px-2 py-0.5 rounded ${
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
                     remoteConfig?.voice_calling_enabled
-                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
-                      : 'bg-amber-950 text-amber-300 border border-amber-800/50'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'
                   }`}
                 >
-                  {remoteConfig?.voice_calling_enabled ? 'Enabled' : 'Calling Suspended'}
+                  {remoteConfig?.voice_calling_enabled ? 'Enabled' : 'Suspended'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mb-4">
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
                 Dynamically toggles Agora RTC voice and video channels across all client apps in real-time.
               </p>
             </div>
-            <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
-              <span className="text-xs text-slate-300">Enable Calling</span>
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200/60">
+              <span className="text-xs font-medium text-slate-600">Enable Calling</span>
               <button
                 onClick={() => updatePolicy('voice_calling_enabled', !remoteConfig?.voice_calling_enabled)}
                 disabled={configLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                  remoteConfig?.voice_calling_enabled ? 'bg-purple-600' : 'bg-slate-700'
+                  remoteConfig?.voice_calling_enabled ? 'bg-purple-600' : 'bg-slate-300'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
                     remoteConfig?.voice_calling_enabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -399,37 +371,37 @@ export default function DevicesPage() {
           </div>
 
           {/* Maintenance Mode */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between">
+          <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   🚧 Maintenance Mode
                 </span>
                 <span
-                  className={`text-[11px] font-mono px-2 py-0.5 rounded ${
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
                     remoteConfig?.maintenance_mode
-                      ? 'bg-amber-950 text-amber-300 border border-amber-800/50 animate-pulse'
-                      : 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                      ? 'bg-amber-100 text-amber-800 border-amber-300 animate-pulse'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   }`}
                 >
-                  {remoteConfig?.maintenance_mode ? 'Maintenance On' : 'Operational'}
+                  {remoteConfig?.maintenance_mode ? 'Active' : 'Operational'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mb-4">
-                Locks client apps into a maintenance splash overlay, suspending normal operations.
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                Locks client apps into a maintenance splash overlay, temporarily suspending operations.
               </p>
             </div>
-            <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
-              <span className="text-xs text-slate-300">Maintenance Mode</span>
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200/60">
+              <span className="text-xs font-medium text-slate-600">Maintenance Lock</span>
               <button
                 onClick={() => updatePolicy('maintenance_mode', !remoteConfig?.maintenance_mode)}
                 disabled={configLoading}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                  remoteConfig?.maintenance_mode ? 'bg-amber-500' : 'bg-slate-700'
+                  remoteConfig?.maintenance_mode ? 'bg-amber-500' : 'bg-slate-300'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
                     remoteConfig?.maintenance_mode ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -440,40 +412,43 @@ export default function DevicesPage() {
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
-          { label: 'Total Devices', value: devices.length, color: 'text-brand-purple' },
+          { label: 'Total Devices', value: devices.length, color: 'text-purple-600', bg: 'bg-purple-50/50' },
           {
             label: 'Active (≤1h)',
             value: devices.filter((d) => Date.now() - d.last_sync_timestamp < 3600000 && !d.is_blocked).length,
-            color: 'text-brand-teal',
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50/50',
           },
           {
             label: 'Unassigned',
             value: devices.filter((d) => d.username === 'Current User').length,
-            color: 'text-amber-400',
+            color: 'text-amber-600',
+            bg: 'bg-amber-50/50',
           },
           {
             label: 'Blocked Devices',
             value: devices.filter((d) => d.is_blocked).length,
-            color: 'text-red-400',
+            color: 'text-rose-600',
+            bg: 'bg-rose-50/50',
           },
         ].map((stat) => (
-          <div key={stat.label} className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <div key={stat.label} className={`bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm`}>
             <div className={`text-3xl font-bold ${stat.color}`}>{stat.value}</div>
-            <div className="text-sm text-slate-500 mt-1">{stat.label}</div>
+            <div className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">{stat.label}</div>
           </div>
         ))}
       </div>
 
       {/* Success / Error toasts */}
       {successMsg && (
-        <div className="mb-4 p-3 bg-emerald-900/50 border border-emerald-700 text-emerald-300 rounded-lg text-sm flex items-center gap-2">
+        <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-medium flex items-center gap-2 shadow-sm">
           <span>{successMsg}</span>
         </div>
       )}
       {error && (
-        <div className="mb-4 p-3 bg-red-900/50 border border-red-700 text-red-300 rounded-lg text-sm">
+        <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-medium shadow-sm">
           {error}
         </div>
       )}
@@ -482,7 +457,7 @@ export default function DevicesPage() {
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1">
           <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -494,7 +469,7 @@ export default function DevicesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by ANDROID_ID, model, username or email…"
-            className="w-full pl-9 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-purple-600 shadow-sm transition-colors"
           />
         </div>
         <button
@@ -502,9 +477,9 @@ export default function DevicesPage() {
             fetchDevices();
             fetchRemoteConfig();
           }}
-          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm text-slate-300 transition-colors flex items-center gap-2 cursor-pointer"
+          className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-sm transition-colors flex items-center gap-2 cursor-pointer"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
           Refresh
@@ -512,25 +487,25 @@ export default function DevicesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-800 bg-slate-800/50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">ANDROID_ID</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Device Model</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Username</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Last Sync</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
+              <tr className="border-b border-slate-200/80 bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider">
+                <th className="px-4 py-3.5 whitespace-nowrap">ANDROID_ID</th>
+                <th className="px-4 py-3.5 whitespace-nowrap">Device Model</th>
+                <th className="px-4 py-3.5 whitespace-nowrap">Assigned User</th>
+                <th className="px-4 py-3.5 whitespace-nowrap">Status</th>
+                <th className="px-4 py-3.5 whitespace-nowrap">Last Sync</th>
+                <th className="px-4 py-3.5 text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
-                    <div className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
+                    <div className="flex items-center justify-center gap-2 font-medium">
+                      <svg className="animate-spin w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
@@ -540,7 +515,7 @@ export default function DevicesPage() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400 font-medium">
                     No devices found. Launch the VibeSync app on a device to register it.
                   </td>
                 </tr>
@@ -549,41 +524,42 @@ export default function DevicesPage() {
                   const isOnline = Date.now() - device.last_sync_timestamp < 3600000;
                   const isUnassigned = device.username === 'Current User';
                   return (
-                    <tr key={device.device_id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-4 py-3">
-                        <code className="text-xs text-slate-400 font-mono bg-slate-800 px-2 py-0.5 rounded">
+                    <tr key={device.device_id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-4 py-3.5">
+                        <code className="text-[11px] text-slate-600 font-mono bg-slate-100 border border-slate-200/60 px-2 py-0.5 rounded-md">
                           {device.device_id.slice(0, 16)}…
                         </code>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <div className={`w-1.5 h-1.5 rounded-full ${device.is_blocked ? 'bg-red-500' : isOnline ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                          <span className="text-white font-medium">{device.device_model}</span>
+                          <div className={`w-2 h-2 rounded-full ${device.is_blocked ? 'bg-rose-500' : isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                          <span className="text-slate-900 font-semibold">{device.device_model}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <span
-                          className={`font-mono text-sm ${
-                            isUnassigned ? 'text-amber-400 italic' : 'text-brand-teal font-semibold'
+                          className={`font-mono text-xs ${
+                            isUnassigned ? 'text-amber-600 italic font-medium' : 'text-purple-700 font-semibold'
                           }`}
                         >
                           {isUnassigned ? '⚠ Unassigned' : `@${device.username}`}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         {device.is_blocked ? (
-                          <span className="px-2 py-0.5 text-xs font-semibold bg-red-950/80 text-red-400 border border-red-800/60 rounded-md">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 rounded-md whitespace-nowrap">
                             🚫 Blocked
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 rounded-md">
-                            ✓ Active
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md whitespace-nowrap">
+                            <span>✓</span>
+                            <span>Active</span>
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">{timeAgo(device.last_sync_timestamp)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                      <td className="px-4 py-3.5 text-slate-500 font-medium text-xs">{timeAgo(device.last_sync_timestamp)}</td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
                           {/* Chat & Call actions if user is assigned */}
                           {device.username && device.username !== 'Current User' && (
                             <>
@@ -595,7 +571,7 @@ export default function DevicesPage() {
                                     display_name: device.device_model,
                                   })
                                 }
-                                className="px-2 py-1 text-xs font-semibold bg-brand-purple/20 text-brand-purple border border-brand-purple/40 rounded-lg hover:bg-brand-purple hover:text-white transition-all flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition-all flex items-center gap-1 cursor-pointer"
                                 title={`Chat with @${device.username}`}
                               >
                                 💬 Chat
@@ -609,7 +585,7 @@ export default function DevicesPage() {
                                   });
                                   setIsCallVideo(false);
                                 }}
-                                className="px-2 py-1 text-xs font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 rounded-lg hover:bg-emerald-800 transition-all flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all flex items-center gap-1 cursor-pointer"
                                 title={`Voice Call @${device.username}`}
                               >
                                 📞 Call
@@ -623,7 +599,7 @@ export default function DevicesPage() {
                                   });
                                   setIsCallVideo(true);
                                 }}
-                                className="px-2 py-1 text-xs font-medium bg-sky-950/80 text-sky-300 border border-sky-700/60 rounded-lg hover:bg-sky-800 transition-all flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1 text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 rounded-lg hover:bg-sky-100 transition-all flex items-center gap-1 cursor-pointer"
                                 title={`Video Call @${device.username}`}
                               >
                                 📹 Video
@@ -639,7 +615,7 @@ export default function DevicesPage() {
                               setEditUsername(device.username);
                               setEditEmail(device.email || '');
                             }}
-                            className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-200/80 transition-colors flex items-center gap-1 cursor-pointer"
                             title="Edit Device Details"
                           >
                             ✏ Edit
@@ -648,7 +624,7 @@ export default function DevicesPage() {
                           {/* Sanitize Data (Remote Nuke) */}
                           <button
                             onClick={() => setSanitizingDevice(device)}
-                            className="px-2 py-1 text-xs font-medium bg-amber-950/70 text-amber-300 border border-amber-800/60 rounded-lg hover:bg-amber-900 transition-colors flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors flex items-center gap-1 cursor-pointer"
                             title="Sanitize Device Data (Wipe local databases, files & credentials)"
                           >
                             🧹 Sanitize
@@ -657,7 +633,7 @@ export default function DevicesPage() {
                           {/* De-provision (Remote Kill Switch / Uninstall) */}
                           <button
                             onClick={() => setDeprovisioningDevice(device)}
-                            className="px-2 py-1 text-xs font-medium bg-rose-950/80 text-rose-300 border border-rose-800/60 rounded-lg hover:bg-rose-900 transition-colors flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors flex items-center gap-1 cursor-pointer"
                             title="De-provision Device (Sanitize data & invoke uninstall sequence)"
                           >
                             ⚡ De-provision
@@ -667,10 +643,10 @@ export default function DevicesPage() {
                           <button
                             onClick={() => handleToggleBlock(device)}
                             disabled={actionLoading}
-                            className={`px-2 py-1 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
                               device.is_blocked
-                                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-700 hover:bg-emerald-900/80'
-                                : 'bg-amber-950/60 text-amber-400 border-amber-700 hover:bg-amber-900/80'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                             }`}
                             title={device.is_blocked ? 'Unblock Device' : 'Block Device'}
                           >
@@ -680,7 +656,7 @@ export default function DevicesPage() {
                           {/* Delete Button */}
                           <button
                             onClick={() => setDeletingDevice(device)}
-                            className="px-2 py-1 text-xs font-medium bg-red-950/60 text-red-400 border border-red-800/60 rounded-lg hover:bg-red-900/80 transition-colors cursor-pointer"
+                            className="px-2.5 py-1 text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
                             title="Delete Device Record"
                           >
                             🗑 Delete
@@ -698,47 +674,47 @@ export default function DevicesPage() {
 
       {/* Edit Device Modal */}
       {editingDevice && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-1">Edit Device</h2>
-            <p className="text-sm text-slate-400 mb-5">
-              Update parameters for <span className="text-white font-medium">{editingDevice.device_id.slice(0, 16)}…</span>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-base font-bold text-slate-900 mb-1">Edit Device</h2>
+            <p className="text-xs text-slate-500 mb-5">
+              Update parameters for <span className="text-slate-800 font-semibold">{editingDevice.device_id.slice(0, 16)}…</span>
             </p>
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Device Model
                 </label>
                 <input
                   type="text"
                   value={editModel}
                   onChange={(e) => setEditModel(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-purple-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Assigned Username
                 </label>
                 <input
                   type="text"
                   value={editUsername}
                   onChange={(e) => setEditUsername(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-brand-purple font-mono"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-purple-600 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
                   Email Address
                 </label>
                 <input
                   type="email"
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-brand-purple"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-purple-600"
                 />
               </div>
             </div>
@@ -746,14 +722,14 @@ export default function DevicesPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setEditingDevice(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 brand-gradient rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
+                className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 rounded-xl text-xs font-bold text-white disabled:opacity-50 transition-all shadow-sm cursor-pointer"
               >
                 {actionLoading ? 'Saving…' : 'Save Changes'}
               </button>
@@ -764,16 +740,16 @@ export default function DevicesPage() {
 
       {/* Sanitize Data Confirmation Modal */}
       {sanitizingDevice && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-amber-700/60 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="w-12 h-12 rounded-full bg-amber-950/80 border border-amber-700/60 flex items-center justify-center mb-4 text-amber-400 text-xl font-bold">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-amber-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center mb-4 text-xl">
               🧹
             </div>
-            <h2 className="text-lg font-bold text-white mb-2">Sanitize Device Data?</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Are you sure you want to execute remote data sanitization for <span className="text-white font-semibold">{sanitizingDevice.device_model}</span>?
+            <h2 className="text-base font-bold text-slate-900 mb-1.5">Sanitize Device Data?</h2>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              Are you sure you want to execute remote data sanitization for <span className="text-slate-900 font-semibold">{sanitizingDevice.device_model}</span>?
             </p>
-            <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg p-3 text-xs text-amber-300/90 mb-6 space-y-1">
+            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 text-xs text-amber-900 mb-6 space-y-1 font-medium">
               <div>• Clears local Room SQLite database files</div>
               <div>• Purges cached media, voice notes & downloads</div>
               <div>• Wipes user credentials & preferences</div>
@@ -783,14 +759,14 @@ export default function DevicesPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setSanitizingDevice(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSanitizeDevice}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 rounded-xl text-xs font-bold text-white disabled:opacity-50 transition-opacity shadow-sm cursor-pointer"
               >
                 {actionLoading ? 'Sanitizing…' : 'Execute Sanitize'}
               </button>
@@ -801,16 +777,16 @@ export default function DevicesPage() {
 
       {/* De-provision Confirmation Modal */}
       {deprovisioningDevice && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-rose-700/60 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="w-12 h-12 rounded-full bg-rose-950/80 border border-rose-700/60 flex items-center justify-center mb-4 text-rose-400 text-xl font-bold">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-rose-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 text-xl">
               ⚡
             </div>
-            <h2 className="text-lg font-bold text-white mb-2">Remote De-provision & Uninstall?</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              This will initiate a managed de-provisioning sequence on <span className="text-white font-semibold">{deprovisioningDevice.device_model}</span> (<code className="text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{deprovisioningDevice.device_id.slice(0, 14)}…</code>).
+            <h2 className="text-base font-bold text-slate-900 mb-1.5">Remote De-provision & Uninstall?</h2>
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              This will initiate a managed de-provisioning sequence on <span className="text-slate-900 font-semibold">{deprovisioningDevice.device_model}</span> (<code className="text-[11px] bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-700">{deprovisioningDevice.device_id.slice(0, 14)}…</code>).
             </p>
-            <div className="bg-rose-950/30 border border-rose-800/40 rounded-lg p-3 text-xs text-rose-300/90 mb-6 space-y-1">
+            <div className="bg-rose-50 border border-rose-200/80 rounded-xl p-3.5 text-xs text-rose-900 mb-6 space-y-1 font-medium">
               <div>• Step 1: Sanitizes all app databases, files & credentials</div>
               <div>• Step 2: Launches Android OS Package Installer uninstallation prompt</div>
               <div>• Step 3: Immediately terminates and exits the app process</div>
@@ -819,14 +795,14 @@ export default function DevicesPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setDeprovisioningDevice(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeprovisionDevice}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 rounded-xl text-xs font-bold text-white disabled:opacity-50 transition-opacity shadow-sm cursor-pointer"
               >
                 {actionLoading ? 'De-provisioning…' : 'Trigger Kill Switch'}
               </button>
@@ -837,27 +813,27 @@ export default function DevicesPage() {
 
       {/* Delete Confirmation Modal */}
       {deletingDevice && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="w-12 h-12 rounded-full bg-red-950/80 border border-red-700/60 flex items-center justify-center mb-4 text-red-400 text-xl font-bold">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-rose-200 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 text-xl">
               ⚠
             </div>
-            <h2 className="text-lg font-bold text-white mb-2">Delete Device?</h2>
-            <p className="text-sm text-slate-400 mb-6">
-              Are you sure you want to delete <span className="text-white font-semibold">{deletingDevice.device_model}</span> (<code className="text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">{deletingDevice.device_id.slice(0, 14)}…</code>)? This action cannot be undone.
+            <h2 className="text-base font-bold text-slate-900 mb-1.5">Delete Device Record?</h2>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              Are you sure you want to delete <span className="text-slate-900 font-semibold">{deletingDevice.device_model}</span> (<code className="text-[11px] bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-700">{deletingDevice.device_id.slice(0, 14)}…</code>)? This action cannot be undone.
             </p>
 
             <div className="flex gap-3">
               <button
                 onClick={() => setDeletingDevice(null)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-slate-300 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteDevice}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-opacity cursor-pointer"
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 rounded-xl text-xs font-bold text-white disabled:opacity-50 transition-opacity shadow-sm cursor-pointer"
               >
                 {actionLoading ? 'Deleting…' : 'Confirm Delete'}
               </button>
