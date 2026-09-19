@@ -63,13 +63,15 @@ class WebSocketSignalingManager private constructor() {
     private val _callSignals = MutableSharedFlow<CallSignalEvent>(extraBufferCapacity = 20)
     val callSignals: SharedFlow<CallSignalEvent> = _callSignals.asSharedFlow()
 
+    private var appContext: android.content.Context? = null
+
     private fun getCandidateWsUrls(userId: String): List<String> {
         val list = mutableListOf<String>()
         val encodedUserId = java.net.URLEncoder.encode(userId.trim(), "UTF-8")
         // 1. Active configured URL
         list.add(com.whatsapp.clone.config.NetworkConfig.getWebSocketUrl(userId))
         // 2. Candidate hosts
-        for (host in com.whatsapp.clone.config.NetworkConfig.buildCandidateHosts(null)) {
+        for (host in com.whatsapp.clone.config.NetworkConfig.buildCandidateHosts(appContext)) {
             val wsBase = host.replace("http://", "ws://").replace("https://", "wss://")
             list.add("$wsBase/ws?user_id=$encodedUserId")
         }
@@ -81,7 +83,8 @@ class WebSocketSignalingManager private constructor() {
         return id.trim().removePrefix("@").lowercase()
     }
 
-    fun start(userId: String) {
+    fun start(userId: String, context: android.content.Context? = null) {
+        if (context != null) appContext = context.applicationContext
         val clean = cleanId(userId)
         if (clean.isBlank()) return
         if (currentUserId == clean && isConnected) return

@@ -635,7 +635,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
 
         // 1. WebSocket relay (backend /ws)
         val wsManager = com.whatsapp.clone.platform.WebSocketSignalingManager.instance
-        wsManager.start(assignedDeviceUsername)
+        wsManager.start(assignedDeviceUsername, context)
 
         // 2. Agora Chat (if App Key is configured — gracefully skips if not)
         val chatManager = com.whatsapp.clone.platform.AgoraChatManager.instance

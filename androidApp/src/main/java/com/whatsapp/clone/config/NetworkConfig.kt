@@ -41,7 +41,12 @@ object NetworkConfig {
     fun getWebSocketUrl(userId: String): String {
         val base = getBaseUrl()
         val wsBase = base.replace("http://", "ws://").replace("https://", "wss://")
-        return "$wsBase/ws?user_id=$userId"
+        val encoded = try {
+            java.net.URLEncoder.encode(userId.trim(), "UTF-8")
+        } catch (_: Exception) {
+            userId.trim()
+        }
+        return "$wsBase/ws?user_id=$encoded"
     }
 
     /**
