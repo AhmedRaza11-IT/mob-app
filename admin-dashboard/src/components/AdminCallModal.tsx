@@ -24,6 +24,7 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(isVideo);
   const [error, setError] = useState<string | null>(null);
+  const [mediaWarning, setMediaWarning] = useState<string | null>(null);
 
   const localVideoRef = useRef<HTMLDivElement>(null);
   const remoteVideoRef = useRef<HTMLDivElement>(null);
@@ -90,6 +91,8 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
     const startCall = async () => {
       try {
         setCallStatus('RINGING');
+        setError(null);
+        setMediaWarning(null);
 
         // 1. Initiate call via backend to signal target mobile user
         const res = await fetch(`${API_BASE}/api/admin/calls/initiate`, {
@@ -101,7 +104,7 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
           }),
         });
 
-        if (!res.ok) throw new Error(`Initiation failed: HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`Call initiation failed with HTTP ${res.status}`);
         const callData = await res.json();
         channelNameRef.current = callData.channel_name;
 
@@ -129,31 +132,45 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
           setTimeout(handleHangup, 1500);
         });
 
-        // 3. Create Local Audio & Video tracks
+        // 3. Create Local Audio & Video tracks gracefully (Handle browser/OS permissions)
         try {
           if (isVideo) {
-            const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-            localAudioTrackRef.current = audioTrack;
-            localVideoTrackRef.current = videoTrack;
-            if (localVideoRef.current && isMounted) {
-              videoTrack.play(localVideoRef.current);
+            try {
+              const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+              localAudioTrackRef.current = audioTrack;
+              localVideoTrackRef.current = videoTrack;
+              if (localVideoRef.current && isMounted) {
+                videoTrack.play(localVideoRef.current);
+              }
+            } catch (avErr: unknown) {
+              console.warn('Could not create both camera & microphone tracks, attempting microphone only:', avErr);
+              try {
+                const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                localAudioTrackRef.current = audioTrack;
+                setMediaWarning('Camera unavailable or blocked. Joined in voice-only mode.');
+              } catch (aErr: unknown) {
+                console.warn('Microphone also unavailable:', aErr);
+                setMediaWarning('Microphone blocked by browser/system. Joined in listener mode. Click the lock/settings icon next to localhost:3000 in your address bar to allow microphone.');
+              }
             }
           } else {
-            const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-            localAudioTrackRef.current = audioTrack;
+            try {
+              const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+              localAudioTrackRef.current = audioTrack;
+            } catch (aErr: unknown) {
+              console.warn('Microphone unavailable:', aErr);
+              setMediaWarning('Microphone blocked by browser/system. Joined in listener mode. Click the lock/settings icon next to localhost:3000 in your address bar to allow microphone.');
+            }
           }
-        } catch (deviceErr) {
-          console.warn('Could not access requested media devices:', deviceErr);
-          // Fallback to mic only if camera unavailable
-          const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-          localAudioTrackRef.current = audioTrack;
+        } catch (e: unknown) {
+          console.warn('General media device error:', e);
         }
 
-        // 4. Join Agora RTC channel
+        // 4. Join Agora RTC channel (Proceeds even in listener mode without local mic!)
         const appId = callData.agora_app_id || 'aab1234567890abcdef1234567890abc';
         await client.join(appId, callData.channel_name, callData.token || null, 0);
 
-        // 5. Publish local tracks
+        // 5. Publish available local tracks
         const tracksToPublish = [];
         if (localAudioTrackRef.current) tracksToPublish.push(localAudioTrackRef.current);
         if (localVideoTrackRef.current && isVideo) tracksToPublish.push(localVideoTrackRef.current);
@@ -164,8 +181,10 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
       } catch (err: unknown) {
         console.error('Call initialization error:', err);
         const errMsg = err instanceof Error ? err.message : String(err);
-        if (errMsg.includes('invalid vendor key') || errMsg.includes('CAN_NOT_GET_GATEWAY_SERVER') || errMsg.includes('can not find appid')) {
-          setError('Agora RTC configuration required: Please add your 32-character Agora App ID in server/.env (AGORA_APP_ID=your_id_here) or Agora Console (https://console.agora.io).');
+        if (errMsg.includes('Failed to fetch')) {
+          setError('Cannot connect to backend server at http://127.0.0.1:8000. Please ensure the backend is running.');
+        } else if (errMsg.includes('invalid vendor key') || errMsg.includes('CAN_NOT_GET_GATEWAY_SERVER') || errMsg.includes('can not find appid')) {
+          setError('Agora RTC configuration required: Please add your 32-character Agora App ID in server/.env or Agora Console (https://console.agora.io).');
         } else {
           setError(`Call error: ${errMsg}`);
         }
@@ -179,6 +198,33 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
       cleanupAgora();
     };
   }, [user, isVideo]);
+
+  const retryMediaPermissions = async () => {
+    try {
+      const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+      if (!localAudioTrackRef.current) {
+        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        localAudioTrackRef.current = audioTrack;
+        if (rtcClientRef.current) {
+          await rtcClientRef.current.publish([audioTrack]);
+        }
+      }
+      if (isVideo && !localVideoTrackRef.current) {
+        const videoTrack = await AgoraRTC.createCameraVideoTrack();
+        localVideoTrackRef.current = videoTrack;
+        if (localVideoRef.current) {
+          videoTrack.play(localVideoRef.current);
+        }
+        if (rtcClientRef.current) {
+          await rtcClientRef.current.publish([videoTrack]);
+        }
+      }
+      setMediaWarning(null);
+    } catch (e: unknown) {
+      console.warn('Retry media tracks failed:', e);
+      setMediaWarning('Permission still denied: Please click the settings icon left of localhost:3000 in your browser address bar and enable Microphone.');
+    }
+  };
 
   const cleanupAgora = () => {
     try {
@@ -224,17 +270,17 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
-        {/* Top Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col">
+        {/* Top Bar / Header */}
+        <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-brand-purple/20 border border-brand-purple/40 flex items-center justify-center text-brand-purple font-bold text-sm">
+            <div className="w-10 h-10 rounded-full bg-brand-purple/20 border border-brand-purple/40 flex items-center justify-center text-brand-purple font-bold">
               {(user.display_name || user.username || 'U')[0].toUpperCase()}
             </div>
             <div>
-              <div className="text-white font-bold text-sm">{user.display_name || user.username}</div>
-              <div className="text-[11px] text-slate-400 font-mono">@{user.username}</div>
+              <h4 className="text-white font-bold text-sm leading-tight">{user.display_name || user.username}</h4>
+              <p className="text-slate-400 text-xs font-mono">@{user.username}</p>
             </div>
           </div>
 
@@ -278,6 +324,22 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
               ref={localVideoRef}
               className="absolute bottom-4 right-4 w-36 h-28 bg-slate-800 border-2 border-slate-600 rounded-2xl overflow-hidden shadow-2xl z-10"
             />
+          )}
+
+          {/* Media Warning Notice (Graceful permission denial / listener mode) */}
+          {mediaWarning && (
+            <div className="absolute top-4 left-4 right-4 p-3 bg-amber-950/90 border border-amber-700/80 text-amber-200 rounded-xl text-xs z-20 flex items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-base flex-shrink-0">⚠️</span>
+                <span>{mediaWarning}</span>
+              </div>
+              <button
+                onClick={retryMediaPermissions}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-lg text-xs whitespace-nowrap transition-colors cursor-pointer flex-shrink-0"
+              >
+                Retry Mic
+              </button>
+            </div>
           )}
 
           {/* Error Message */}
