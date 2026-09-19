@@ -27,12 +27,16 @@ except ImportError:
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    _env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path, override=True)
+    else:
+        load_dotenv()
 except ImportError:
     pass
 
 # Agora RTC Configuration
-AGORA_APP_ID = os.getenv("AGORA_APP_ID", "aab1234567890abcdef1234567890abc")
+AGORA_APP_ID = os.getenv("AGORA_APP_ID", "e63a3e4f21124b659d8eeaef92f367c2")
 AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "")
 
 

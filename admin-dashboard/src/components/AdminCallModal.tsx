@@ -167,7 +167,7 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
         }
 
         // 4. Join Agora RTC channel (Proceeds even in listener mode without local mic!)
-        const appId = callData.agora_app_id || 'aab1234567890abcdef1234567890abc';
+        const appId = callData.agora_app_id || 'e63a3e4f21124b659d8eeaef92f367c2';
         await client.join(appId, callData.channel_name, callData.token || null, 0);
 
         // 5. Publish available local tracks

@@ -67,6 +67,8 @@ import com.whatsapp.clone.ui.settings.SettingsViewModel
 import com.whatsapp.clone.ui.settings.data.AppTheme
 import com.whatsapp.clone.ui.settings.navigation.SettingsNavHost
 
+const val AGORA_APP_ID = "e63a3e4f21124b659d8eeaef92f367c2"
+
 object UserApiClient {
     private val BASE_URL get() = NetworkConfig.getBaseUrl()
 
@@ -797,7 +799,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
             isInCall = true
             // Join Agora RTC channel
             val callManager = com.whatsapp.clone.platform.AgoraCallManager.instance
-            callManager.init(context, "aab1234567890abcdef1234567890abc")
+            callManager.init(context, AGORA_APP_ID)
             callManager.joinCall("", incomingAcceptedChannel, 0, incomingAcceptedVideo)
         }
     }
@@ -982,7 +984,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
 
                                     // Join Agora RTC channel (caller side)
                                     com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
-                                        cm.init(context, "aab1234567890abcdef1234567890abc")
+                                        cm.init(context, AGORA_APP_ID)
                                         cm.joinCall("", channelName, 0, false)
                                     }
 
@@ -1025,7 +1027,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
 
                                     // Join Agora RTC channel (caller side)
                                     com.whatsapp.clone.platform.AgoraCallManager.instance.let { cm ->
-                                        cm.init(context, "aab1234567890abcdef1234567890abc")
+                                        cm.init(context, AGORA_APP_ID)
                                         cm.joinCall("", channelName, 0, true)
                                     }
 
@@ -1993,7 +1995,7 @@ fun CallOverlayScreen(
     val remoteUid by callManager.remoteUid.collectAsState()
 
     LaunchedEffect(Unit) {
-        callManager.init(context, "aab1234567890abcdef1234567890abc")
+        callManager.init(context, AGORA_APP_ID)
         callManager.joinCall(
             token = "",
             channelName = partner?.id ?: "vibe_sync_channel",
