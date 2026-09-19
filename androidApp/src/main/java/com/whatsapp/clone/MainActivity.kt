@@ -12,6 +12,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import java.io.File
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.net.HttpURLConnection
@@ -676,7 +678,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
 
                 // 1. Move/add sender to top of recent chats
                 val existingIndex = recentChats.indexOfFirst { 
-                    it.id == partnerId || it.username.equals(partnerUsername, ignoreCase = true) 
+                    it.id.equals(partnerId, ignoreCase = true) || it.username.equals(partnerUsername, ignoreCase = true) 
                 }
                 if (existingIndex >= 0) {
                     val existing = recentChats.removeAt(existingIndex)
@@ -685,22 +687,40 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     recentChats.add(0, partnerUser)
                 }
 
-                // 2. Add message to thread
+                // 2. Add message to thread (share same list instance across partnerId and partnerUsername)
                 val newMsg = MessageUI(
                     id = msg.id,
                     senderId = partnerId,
                     text = msg.content,
-                    isVoiceNote = msg.isVoiceNote
+                    isVoiceNote = msg.isVoiceNote,
+                    timestamp = msg.timestamp
                 )
                 val thread = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
+                if (partnerUsername.isNotBlank()) {
+                    chatThreads[partnerUsername] = thread
+                    val cleanUsername = partnerUsername.trim().lowercase().removePrefix("@")
+                    if (cleanUsername.isNotBlank()) {
+                        chatThreads[cleanUsername] = thread
+                    }
+                }
                 if (!thread.any { it.id == newMsg.id }) {
                     thread.add(newMsg)
                 }
-                if (partnerUsername != partnerId) {
-                    val usernameThread = chatThreads.getOrPut(partnerUsername) { mutableStateListOf() }
-                    if (!usernameThread.any { it.id == newMsg.id }) {
-                        usernameThread.add(newMsg)
-                    }
+
+                // 3. Update offline repository reactive flow
+                val domainMsg = com.whatsapp.clone.models.Message(
+                    id = newMsg.id,
+                    conversationId = msg.conversationId.ifBlank { partnerId },
+                    senderId = partnerId,
+                    recipientId = assignedDeviceUsername,
+                    messageType = if (newMsg.isVoiceNote) com.whatsapp.clone.models.MessageType.VOICE_NOTE else com.whatsapp.clone.models.MessageType.TEXT,
+                    content = newMsg.text,
+                    status = com.whatsapp.clone.models.MessageStatus.DELIVERED,
+                    createdAt = msg.timestamp
+                )
+                offlineRepository.addMessageToConversation(partnerId, domainMsg)
+                if (partnerUsername.isNotBlank() && partnerUsername != partnerId) {
+                    offlineRepository.addMessageToConversation(partnerUsername, domainMsg)
                 }
             }
         }
@@ -1014,12 +1034,22 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     username = currentUsername
                 )
             } else if (activeChatPartner != null) {
+                val currentPartner = activeChatPartner!!
+                val partnerKey = currentPartner.id
+                val partnerUsername = currentPartner.username
+                val sharedThread = chatThreads.getOrPut(partnerKey) {
+                    chatThreads[partnerUsername] ?: mutableStateListOf()
+                }
+                if (partnerUsername.isNotBlank()) {
+                    chatThreads[partnerUsername] = sharedThread
+                }
+
                 ChatRoomScreen(
-                    partner = activeChatPartner!!,
+                    partner = currentPartner,
                     currentUsername = currentUsername,
-                    messages = chatThreads.getOrPut(activeChatPartner!!.id) { mutableStateListOf() },
+                    messages = sharedThread,
                     onSendMessage = { text ->
-                        val partnerId = activeChatPartner!!.id
+                        val partnerId = currentPartner.id
                         val currentSender = currentUsername
 
                         // 1. Add locally to snapshot state list
@@ -1031,14 +1061,11 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                             timestamp = System.currentTimeMillis()
                         )
                         val thread = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
+                        if (currentPartner.username.isNotBlank()) {
+                            chatThreads[currentPartner.username] = thread
+                        }
                         if (!thread.any { it.id == localMsg.id }) {
                             thread.add(localMsg)
-                        }
-                        if (activeChatPartner!!.username != partnerId) {
-                            val unThread = chatThreads.getOrPut(activeChatPartner!!.username) { mutableStateListOf() }
-                            if (!unThread.any { it.id == localMsg.id }) {
-                                unThread.add(localMsg)
-                            }
                         }
 
                         // 2. Update recent chats
@@ -1419,23 +1446,63 @@ fun ChatRoomScreen(
         listOf("😀", "😂", "😍", "👍", "🔥", "🎉", "❤️", "🙏", "😎", "🥳", "🥺", "🤔", "👏", "💯", "🚀")
     }
 
+    val listState = rememberLazyListState()
+
+    // 1. Reactive WebSocket listener for the active conversation (instant real-time delivery)
     LaunchedEffect(partner.id, partner.username) {
-        try {
-            android.util.Log.d("VibeSync", "ChatRoomScreen LaunchedEffect for partner.id=${partner.id}, currentUsername=$currentUsername")
-            var remoteMsgs = UserApiClient.fetchMessages(partner.id, currentUsername, context)
-            if (remoteMsgs.isEmpty() && partner.username.isNotBlank() && partner.username != partner.id) {
-                remoteMsgs = UserApiClient.fetchMessages(partner.username, currentUsername, context)
-            }
-            android.util.Log.d("VibeSync", "ChatRoomScreen fetched ${remoteMsgs.size} messages")
-            if (remoteMsgs.isNotEmpty()) {
-                remoteMsgs.forEach { msg ->
-                    if (!messages.any { it.id == msg.id }) {
-                        messages.add(msg)
-                    }
+        val wsManager = com.whatsapp.clone.platform.WebSocketSignalingManager.instance
+        wsManager.incomingMessages.collect { msg ->
+            val pIdClean = partner.id.trim().lowercase().removePrefix("@")
+            val pUserClean = partner.username.trim().lowercase().removePrefix("@")
+            val sIdClean = msg.senderId.trim().lowercase().removePrefix("@")
+            val sUserClean = msg.senderUsername.trim().lowercase().removePrefix("@")
+
+            val isMatch = sIdClean == pIdClean || sUserClean == pUserClean ||
+                          sIdClean == pUserClean || sUserClean == pIdClean ||
+                          (pIdClean == "admin" && (sIdClean == "admin" || sUserClean == "admin"))
+
+            if (isMatch) {
+                val newMsg = MessageUI(
+                    id = msg.id,
+                    senderId = msg.senderId,
+                    text = msg.content,
+                    isVoiceNote = msg.isVoiceNote,
+                    timestamp = msg.timestamp
+                )
+                if (!messages.any { it.id == newMsg.id }) {
+                    messages.add(newMsg)
+                    android.util.Log.d("VibeSync", "ChatRoomScreen added real-time incoming msg: ${newMsg.text}")
                 }
             }
-        } catch (e: Exception) {
-            android.util.Log.e("VibeSync", "ChatRoomScreen fetch error: ${e.message}")
+        }
+    }
+
+    // 2. Initial fetch & reactive continuous background sync while conversation is open
+    LaunchedEffect(partner.id, partner.username) {
+        while (isActive) {
+            try {
+                var remoteMsgs = UserApiClient.fetchMessages(partner.id, currentUsername, context)
+                if (remoteMsgs.isEmpty() && partner.username.isNotBlank() && partner.username != partner.id) {
+                    remoteMsgs = UserApiClient.fetchMessages(partner.username, currentUsername, context)
+                }
+                if (remoteMsgs.isNotEmpty()) {
+                    remoteMsgs.forEach { msg ->
+                        if (!messages.any { it.id == msg.id }) {
+                            messages.add(msg)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("VibeSync", "ChatRoomScreen fetch error: ${e.message}")
+            }
+            kotlinx.coroutines.delay(2500)
+        }
+    }
+
+    // 3. Auto-scroll to bottom whenever messages list size changes
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
         }
     }
 
@@ -1476,7 +1543,7 @@ fun ChatRoomScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(WaBackgroundChat)) {
-        LazyColumn(modifier = Modifier.weight(1f).padding(12.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(12.dp)) {
             items(messages) { msg ->
                 val isOutgoing = msg.senderId == "me" || (!msg.senderId.equals(partner.id, ignoreCase = true) && !msg.senderId.equals(partner.username, ignoreCase = true))
                 Row(

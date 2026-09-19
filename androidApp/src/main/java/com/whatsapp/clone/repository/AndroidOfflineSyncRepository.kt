@@ -5,8 +5,10 @@ import com.whatsapp.clone.crypto.SignalProtocolManager
 import com.whatsapp.clone.models.Message
 import com.whatsapp.clone.models.MessageStatus
 import com.whatsapp.clone.models.MessageType
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 /**
@@ -69,6 +71,52 @@ class AndroidOfflineSyncRepository {
 
         _pendingQueue.value = currentList + message
         return true
+    }
+
+    // Reactive in-memory conversation message store for instant UI updates across components
+    private val _conversationMessages = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
+    val conversationMessages: StateFlow<Map<String, List<Message>>> = _conversationMessages
+
+    fun getMessagesForConversation(partnerId: String): Flow<List<Message>> {
+        val cleanKey = partnerId.trim().lowercase().removePrefix("@")
+        return _conversationMessages.map { map ->
+            map[cleanKey] ?: map[partnerId] ?: emptyList()
+        }
+    }
+
+    fun addMessageToConversation(partnerKey: String, message: Message) {
+        val cleanKey = partnerKey.trim().lowercase().removePrefix("@")
+        val currentMap = _conversationMessages.value.toMutableMap()
+        val existing = currentMap[cleanKey]?.toMutableList() ?: mutableListOf()
+        if (!existing.any { it.id == message.id }) {
+            existing.add(message)
+            currentMap[cleanKey] = existing
+            if (cleanKey != partnerKey) {
+                currentMap[partnerKey] = existing
+            }
+            _conversationMessages.value = currentMap
+        }
+    }
+
+    fun mergeMessagesForConversation(partnerKey: String, messages: List<Message>) {
+        val cleanKey = partnerKey.trim().lowercase().removePrefix("@")
+        val currentMap = _conversationMessages.value.toMutableMap()
+        val existing = currentMap[cleanKey]?.toMutableList() ?: mutableListOf()
+        var changed = false
+        for (m in messages) {
+            if (!existing.any { it.id == m.id }) {
+                existing.add(m)
+                changed = true
+            }
+        }
+        if (changed) {
+            existing.sortBy { it.createdAt }
+            currentMap[cleanKey] = existing
+            if (cleanKey != partnerKey) {
+                currentMap[partnerKey] = existing
+            }
+            _conversationMessages.value = currentMap
+        }
     }
 
     fun flushPendingMessagesOnReconnect(sendOverWebSocket: (Message) -> Boolean) {

@@ -19,7 +19,7 @@ object NetworkConfig {
     private const val KEY_CACHED_HOST = "cached_working_host"
 
     // Default Fallback Hosts
-    private const val DEFAULT_PC_IP = "192.168.18.75"
+    private const val DEFAULT_PC_IP = "192.168.18.78"
     private const val DEFAULT_PORT = "8000"
 
     @Volatile

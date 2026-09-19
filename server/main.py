@@ -3,7 +3,7 @@ import uuid
 import time
 import json
 import random
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Query
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import List, Optional
@@ -575,10 +575,10 @@ async def admin_send_message(data: dict):
         }
     }
 
-    # Dispatch to target ID and target username
-    await ws_manager.send_personal_message(event, target_id)
-    if target_username != target_id:
-        await ws_manager.send_personal_message(event, target_username)
+    # Dispatch to target ID and target username and raw recipient_id
+    for recipient_key in set([target_id, target_username, recipient_id]):
+        if recipient_key:
+            await ws_manager.send_personal_message(event, recipient_key)
 
     return {
         "status": "success",
@@ -814,36 +814,55 @@ async def admin_create_user(data: dict):
 
     return new_user
 
+@app.put("/api/users/{user_id}")
 @app.put("/api/admin/users/{user_id}")
-async def admin_update_user(user_id: str, data: dict):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-    existing = cursor.fetchone()
-    if not existing:
+async def admin_update_user(user_id: str, request: Request):
+    try:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            data = await request.json()
+        else:
+            try:
+                form = await request.form()
+                data = dict(form)
+            except Exception:
+                data = await request.json()
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        existing = dict(row)
+
+        display_name = data.get("display_name", existing.get("display_name", ""))
+        bio = data.get("bio", existing.get("bio", ""))
+        is_banned = 1 if data.get("is_banned") else 0 if "is_banned" in data else existing.get("is_banned", 0)
+
+        cursor.execute(
+            "UPDATE users SET display_name = ?, bio = ?, is_banned = ? WHERE id = ?",
+            (display_name, bio, is_banned, user_id)
+        )
+        conn.commit()
+
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        updated = dict(cursor.fetchone())
         conn.close()
-        raise HTTPException(status_code=404, detail="User not found")
 
-    display_name = data.get("display_name", existing["display_name"])
-    bio = data.get("bio", existing["bio"])
-    is_banned = 1 if data.get("is_banned") else 0 if "is_banned" in data else existing.get("is_banned", 0)
+        await ws_manager.broadcast_all({
+            "type": "ADMIN_USER_UPDATED",
+            "user": updated
+        })
 
-    cursor.execute(
-        "UPDATE users SET display_name = ?, bio = ?, is_banned = ? WHERE id = ?",
-        (display_name, bio, is_banned, user_id)
-    )
-    conn.commit()
-
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-    updated = dict(cursor.fetchone())
-    conn.close()
-
-    await ws_manager.broadcast_all({
-        "type": "ADMIN_USER_UPDATED",
-        "user": updated
-    })
-
-    return updated
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"admin_update_user error: {e}")
 
 @app.delete("/api/admin/users/{user_id}")
 async def admin_delete_user(user_id: str):
@@ -1443,7 +1462,25 @@ async def log_call(data: dict):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await ws_manager.connect(user_id, websocket)
+    aliases = [user_id]
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        clean_u = user_id.lstrip("@").strip()
+        cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (clean_u, clean_u))
+        u_row = cursor.fetchone()
+        if u_row:
+            aliases.append(u_row["id"])
+            aliases.append(u_row["username"])
+            cursor.execute("SELECT device_id FROM devices WHERE user_id = ? OR LOWER(username) = LOWER(?)", (u_row["id"], u_row["username"]))
+            for dev in cursor.fetchall():
+                if dev["device_id"]:
+                    aliases.append(dev["device_id"])
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Error fetching aliases for {user_id}: {e}")
+
+    await ws_manager.connect(user_id, websocket, aliases=aliases)
     try:
         while True:
             data_str = await websocket.receive_text()
@@ -1542,7 +1579,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
                 
     except WebSocketDisconnect:
-        ws_manager.disconnect(user_id)
+        ws_manager.disconnect(user_id, aliases=aliases)
         await ws_manager.broadcast_user_status(user_id, online=False)
 
 

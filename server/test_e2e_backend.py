@@ -56,9 +56,12 @@ async def test_websocket_two_way_messaging_and_persistence():
             }
             await ws1.send(json.dumps(payload))
 
-            # Receive message on receiver_e2e WebSocket
-            incoming_raw = await asyncio.wait_for(ws2.recv(), timeout=5.0)
-            incoming = json.loads(incoming_raw)
+            # Receive message on receiver_e2e WebSocket, skipping presence broadcasts
+            while True:
+                incoming_raw = await asyncio.wait_for(ws2.recv(), timeout=5.0)
+                incoming = json.loads(incoming_raw)
+                if incoming.get("type") != "USER_STATUS":
+                    break
             assert incoming["type"] == "NEW_MESSAGE"
             assert incoming["payload"]["content"] == "Hello via WebSocket E2E Test!"
 

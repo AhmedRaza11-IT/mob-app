@@ -30,25 +30,30 @@ class WebSocketManager:
         # Map clean_user_id -> WebSocket
         self.active_connections: Dict[str, WebSocket] = {}
 
-    async def connect(self, user_id: str, websocket: WebSocket):
+    async def connect(self, user_id: str, websocket: WebSocket, aliases: list = None):
         await websocket.accept()
-        cid = clean_user_id(user_id)
-        self.active_connections[cid] = websocket
-        # Also register variants for instant matching
-        for variant in get_id_variants(user_id):
-            self.active_connections[variant] = websocket
-        logger.info(f"[WS] User '{user_id}' (clean: '{cid}') connected. Active clients: {list(self.active_connections.keys())}")
+        all_ids = [user_id] + (aliases or [])
+        for uid in all_ids:
+            if not uid:
+                continue
+            cid = clean_user_id(uid)
+            self.active_connections[cid] = websocket
+            for variant in get_id_variants(uid):
+                self.active_connections[variant] = websocket
+        logger.info(f"[WS] User '{user_id}' connected with aliases {all_ids}. Total active keys: {len(self.active_connections)}")
         # Broadcast online status
-        await self.broadcast_user_status(cid, online=True)
+        await self.broadcast_user_status(clean_user_id(user_id), online=True)
 
-    def disconnect(self, user_id: str):
-        cid = clean_user_id(user_id)
-        for variant in get_id_variants(user_id):
-            if variant in self.active_connections:
-                del self.active_connections[variant]
-        if cid in self.active_connections:
-            del self.active_connections[cid]
-        logger.info(f"[WS] User '{cid}' disconnected. Remaining: {list(self.active_connections.keys())}")
+    def disconnect(self, user_id: str, aliases: list = None):
+        all_ids = [user_id] + (aliases or [])
+        for uid in all_ids:
+            if not uid:
+                continue
+            cid = clean_user_id(uid)
+            for variant in get_id_variants(uid):
+                self.active_connections.pop(variant, None)
+            self.active_connections.pop(cid, None)
+        logger.info(f"[WS] User '{user_id}' disconnected. Remaining active keys: {len(self.active_connections)}")
 
     def is_online(self, user_id: str) -> bool:
         if not user_id:

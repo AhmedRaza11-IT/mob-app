@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import okhttp3.*
 import org.json.JSONObject
@@ -46,13 +47,17 @@ class WebSocketSignalingManager private constructor() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var webSocket: WebSocket? = null
     private val okHttpClient = OkHttpClient.Builder()
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
-        .pingInterval(15, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .pingInterval(10, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private var currentUserId: String? = null
     private var isConnected = false
+    private var isConnecting = false
+    private var reconnectAttempts = 0
+    private var reconnectJob: Job? = null
 
     private val _incomingMessages = MutableSharedFlow<IncomingMessageEvent>(extraBufferCapacity = 64)
     val incomingMessages: SharedFlow<IncomingMessageEvent> = _incomingMessages.asSharedFlow()
@@ -89,63 +94,91 @@ class WebSocketSignalingManager private constructor() {
         if (clean.isBlank()) return
         if (currentUserId == clean && isConnected) return
         currentUserId = clean
+        reconnectAttempts = 0
         connect()
+    }
+
+    fun scheduleReconnect() {
+        if (isConnected || currentUserId.isNullOrBlank()) return
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            val delayMs = (1500L * (1 shl reconnectAttempts.coerceAtMost(3))).coerceIn(1500L, 10000L)
+            Log.d(TAG, "Scheduling WebSocket reconnect in ${delayMs}ms (attempt #$reconnectAttempts)...")
+            delay(delayMs)
+            reconnectAttempts++
+            connect()
+        }
     }
 
     private fun connect() {
         val userId = currentUserId ?: return
+        if (isConnected || isConnecting) return
+        isConnecting = true
+
         scope.launch {
-            if (isConnected) return@launch
-            val candidates = getCandidateWsUrls(userId)
-            for (url in candidates) {
-                if (isConnected) break
-                try {
-                    Log.d(TAG, "Attempting WebSocket connection to $url ...")
-                    val request = Request.Builder().url(url).build()
-                    val connectionLatch = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            try {
+                val candidates = getCandidateWsUrls(userId)
+                for (url in candidates) {
+                    if (isConnected) break
+                    try {
+                        Log.d(TAG, "Attempting WebSocket connection to $url ...")
+                        val request = Request.Builder().url(url).build()
+                        val connectionLatch = kotlinx.coroutines.CompletableDeferred<Boolean>()
 
-                    val listener = object : WebSocketListener() {
-                        override fun onOpen(webSocket: WebSocket, response: Response) {
-                            Log.d(TAG, "WebSocket connected successfully to $url")
-                            isConnected = true
-                            this@WebSocketSignalingManager.webSocket = webSocket
-                            connectionLatch.complete(true)
-                        }
+                        val listener = object : WebSocketListener() {
+                            override fun onOpen(webSocket: WebSocket, response: Response) {
+                                Log.d(TAG, "WebSocket connected successfully to $url")
+                                isConnected = true
+                                isConnecting = false
+                                reconnectAttempts = 0
+                                reconnectJob?.cancel()
+                                this@WebSocketSignalingManager.webSocket = webSocket
+                                connectionLatch.complete(true)
+                            }
 
-                        override fun onMessage(webSocket: WebSocket, text: String) {
-                            handleIncomingMessage(text)
-                        }
+                            override fun onMessage(webSocket: WebSocket, text: String) {
+                                handleIncomingMessage(text)
+                            }
 
-                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                            Log.d(TAG, "WebSocket closed: $reason")
-                            if (this@WebSocketSignalingManager.webSocket == webSocket) {
-                                isConnected = false
-                                this@WebSocketSignalingManager.webSocket = null
+                            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                                Log.d(TAG, "WebSocket closed: $reason (code=$code)")
+                                if (this@WebSocketSignalingManager.webSocket == webSocket) {
+                                    isConnected = false
+                                    this@WebSocketSignalingManager.webSocket = null
+                                }
+                                isConnecting = false
+                                scheduleReconnect()
+                            }
+
+                            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                                Log.w(TAG, "WebSocket connection failed to $url: ${t.message}")
+                                if (this@WebSocketSignalingManager.webSocket == webSocket) {
+                                    isConnected = false
+                                    this@WebSocketSignalingManager.webSocket = null
+                                }
+                                connectionLatch.complete(false)
+                                scheduleReconnect()
                             }
                         }
+                        val ws = okHttpClient.newWebSocket(request, listener)
+                        val result = kotlinx.coroutines.withTimeoutOrNull(2500) {
+                            connectionLatch.await()
+                        } ?: false
 
-                        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                            Log.w(TAG, "WebSocket connection failed to $url: ${t.message}")
-                            if (this@WebSocketSignalingManager.webSocket == webSocket) {
-                                isConnected = false
-                                this@WebSocketSignalingManager.webSocket = null
-                            }
-                            connectionLatch.complete(false)
+                        if (result && isConnected) {
+                            Log.i(TAG, "Established stable WebSocket connection on $url")
+                            break
+                        } else {
+                            ws.cancel()
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error connecting to $url", e)
                     }
-                    val ws = okHttpClient.newWebSocket(request, listener)
-                    val result = kotlinx.coroutines.withTimeoutOrNull(2500) {
-                        connectionLatch.await()
-                    } ?: false
-
-                    if (result && isConnected) {
-                        Log.i(TAG, "Established stable WebSocket connection on $url")
-                        break
-                    } else {
-                        ws.cancel()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error connecting to $url", e)
+                }
+            } finally {
+                isConnecting = false
+                if (!isConnected) {
+                    scheduleReconnect()
                 }
             }
         }
