@@ -37,11 +37,12 @@ import com.whatsapp.clone.platform.OngoingCallService
  */
 class IncomingCallActivity : ComponentActivity() {
 
-    private val callerId   by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_ID)   ?: "" }
-    private val callerName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME) ?: "Unknown" }
+    private val callerId   by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_ID)?.ifBlank { "admin" } ?: "admin" }
+    private val callerName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME)?.ifBlank { "System Admin" } ?: "System Admin" }
     private val isVideo    by lazy { intent?.getBooleanExtra(IncomingCallNotificationManager.EXTRA_IS_VIDEO, false) ?: false }
-    private val channelName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CHANNEL)    ?: callerId }
+    private val channelName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CHANNEL)?.ifBlank { "admin_call" } ?: "admin_call" }
     private val callId     by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALL_ID)     ?: "" }
+    private val token      by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_TOKEN)       ?: "" }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,11 +88,12 @@ class IncomingCallActivity : ComponentActivity() {
 
         // Return to MainActivity which will show the CallOverlayScreen
         val mainIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("ACCEPTED_CALL_CHANNEL", channelName)
             putExtra("ACCEPTED_CALL_CALLER_ID", callerId)
             putExtra("ACCEPTED_CALL_CALLER_NAME", callerName)
             putExtra("ACCEPTED_CALL_IS_VIDEO", isVideo)
+            putExtra("ACCEPTED_CALL_TOKEN", token)
         }
         startActivity(mainIntent)
         finish()

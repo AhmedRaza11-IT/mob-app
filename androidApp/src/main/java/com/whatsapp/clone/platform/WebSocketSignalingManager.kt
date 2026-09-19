@@ -30,7 +30,8 @@ data class IncomingCallEvent(
     val callerId: String,
     val callerName: String,
     val isVideo: Boolean,
-    val channelName: String
+    val channelName: String,
+    val token: String = ""
 )
 
 data class CallSignalEvent(
@@ -84,7 +85,7 @@ class WebSocketSignalingManager private constructor() {
     }
 
     private fun cleanId(id: String?): String {
-        if (id == null) return ""
+        if (id.isNullOrBlank()) return "admin"
         return id.trim().removePrefix("@").lowercase()
     }
 
@@ -220,19 +221,23 @@ class WebSocketSignalingManager private constructor() {
                 }
                 "CALL_INITIATE" -> {
                     val callId = json.optString("call_id", java.util.UUID.randomUUID().toString())
-                    val callerName = json.optString("caller_name", senderId)
+                    val rawCaller = json.optString("caller_id", json.optString("sender_id", "admin")).ifBlank { "admin" }
+                    val callerName = json.optString("caller_name", if (rawCaller == "admin") "System Admin" else rawCaller).ifBlank { "System Admin" }
                     val isVideo = json.optBoolean("is_video", false)
-                    val channelName = json.optString("channel_name", senderId)
+                    val channelName = json.optString("channel_name", rawCaller)
+                    val token = json.optString("token", "")
 
                     val event = IncomingCallEvent(
                         callId = callId,
-                        callerId = senderId,
+                        callerId = rawCaller,
                         callerName = callerName,
                         isVideo = isVideo,
-                        channelName = channelName
+                        channelName = channelName,
+                        token = token
                     )
+                    Log.i(TAG, "Received CALL_INITIATE: caller=$rawCaller channel=$channelName video=$isVideo hasToken=${token.isNotBlank()}")
                     _incomingCalls.tryEmit(event)
-                    _callSignals.tryEmit(CallSignalEvent(type, senderId, recipientId, channelName, isVideo, callerName))
+                    _callSignals.tryEmit(CallSignalEvent(type, rawCaller, recipientId, channelName, isVideo, callerName))
                 }
                 "CALL_ACCEPTED", "CALL_REJECTED", "CALL_ENDED" -> {
                     val channelName = json.optString("channel_name")

@@ -183,10 +183,8 @@ export default function AdminCallModal({ user, isVideo, onClose }: AdminCallModa
         const errMsg = err instanceof Error ? err.message : String(err);
         if (errMsg.includes('Failed to fetch')) {
           setError('Cannot connect to backend server at http://127.0.0.1:8000. Please ensure the backend is running.');
-        } else if (errMsg.includes('invalid vendor key') || errMsg.includes('CAN_NOT_GET_GATEWAY_SERVER') || errMsg.includes('can not find appid')) {
-          setError('Agora RTC configuration required: Please add your 32-character Agora App ID in server/.env or Agora Console (https://console.agora.io).');
         } else {
-          setError(`Call error: ${errMsg}`);
+          setError(`Agora RTC Error: ${errMsg}`);
         }
       }
     };

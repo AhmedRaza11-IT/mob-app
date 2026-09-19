@@ -18,13 +18,14 @@ import androidx.core.content.ContextCompat
 class CallSignalReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val callerId   = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_ID)   ?: ""
-        val callerName = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME) ?: "Unknown"
+        val callerId   = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_ID)?.ifBlank { "admin" } ?: "admin"
+        val callerName = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME)?.ifBlank { "System Admin" } ?: "System Admin"
         val isVideo    = intent.getBooleanExtra(IncomingCallNotificationManager.EXTRA_IS_VIDEO, false)
-        val channel    = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CHANNEL)     ?: callerId
+        val channel    = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CHANNEL)?.ifBlank { "admin_call" } ?: "admin_call"
         val callId     = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALL_ID)     ?: ""
+        val token      = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_TOKEN)       ?: ""
 
-        Log.d(TAG, "CallSignalReceiver: action=${intent.action} caller=$callerId channel=$channel")
+        Log.d(TAG, "CallSignalReceiver: action=${intent.action} caller=$callerId channel=$channel hasToken=${token.isNotBlank()}")
 
         when (intent.action) {
             IncomingCallNotificationManager.ACTION_ACCEPT -> {
@@ -42,7 +43,18 @@ class CallSignalReceiver : BroadcastReceiver() {
 
                 // Cancel incoming call notification
                 IncomingCallNotificationManager.cancel(context)
-                Log.d(TAG, "Call accepted: joining channel '$channel' (video=$isVideo)")
+
+                // Launch MainActivity with call overlay extras
+                val launchIntent = Intent(context, com.whatsapp.clone.MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("ACCEPTED_CALL_CHANNEL", channel)
+                    putExtra("ACCEPTED_CALL_CALLER_ID", callerId)
+                    putExtra("ACCEPTED_CALL_CALLER_NAME", callerName)
+                    putExtra("ACCEPTED_CALL_IS_VIDEO", isVideo)
+                    putExtra("ACCEPTED_CALL_TOKEN", token)
+                }
+                context.startActivity(launchIntent)
+                Log.d(TAG, "Call accepted: launched MainActivity for channel '$channel' (video=$isVideo)")
             }
 
             IncomingCallNotificationManager.ACTION_DECLINE -> {

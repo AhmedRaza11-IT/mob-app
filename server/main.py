@@ -1411,28 +1411,49 @@ def get_messages(conversation_id: str, current_user: Optional[str] = None):
     
     # If no messages found by conversation_id, check if conversation_id is actually a user ID or username
     if not rows:
-        cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (conversation_id, conversation_id))
-        u_row = cursor.fetchone()
-        if u_row:
-            u_id = u_row["id"]
-            if current_user:
-                cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (current_user, current_user))
-                cu_row = cursor.fetchone()
-                cu_id = cu_row["id"] if cu_row else current_user
-                p1, p2 = sorted([u_id, cu_id])
-                cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
-                c_row = cursor.fetchone()
-                if c_row:
-                    cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC", (c_row["id"],))
-                    rows = cursor.fetchall()
-            else:
-                cursor.execute("""
-                    SELECT m.* FROM messages m
-                    JOIN conversations c ON m.conversation_id = c.id
-                    WHERE c.participant_one = ? OR c.participant_two = ?
-                    ORDER BY m.created_at ASC
-                """, (u_id, u_id))
+        # Special case: "admin" is not in the users table — look up conversation by admin sender_id
+        if conversation_id.lower() == "admin" and current_user:
+            cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (current_user, current_user))
+            cu_row = cursor.fetchone()
+            cu_id = cu_row["id"] if cu_row else current_user
+            p1, p2 = sorted(["admin", cu_id])
+            cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
+            c_row = cursor.fetchone()
+            if c_row:
+                cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC", (c_row["id"],))
                 rows = cursor.fetchall()
+            if not rows:
+                # Fallback: fetch all messages where sender_id = admin and recipient is this user
+                cursor.execute("""
+                    SELECT * FROM messages
+                    WHERE (sender_id = 'admin' AND recipient_id = ?)
+                       OR (sender_id = ? AND recipient_id = 'admin')
+                    ORDER BY created_at ASC
+                """, (cu_id, cu_id))
+                rows = cursor.fetchall()
+        else:
+            cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (conversation_id, conversation_id))
+            u_row = cursor.fetchone()
+            if u_row:
+                u_id = u_row["id"]
+                if current_user:
+                    cursor.execute("SELECT id FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (current_user, current_user))
+                    cu_row = cursor.fetchone()
+                    cu_id = cu_row["id"] if cu_row else current_user
+                    p1, p2 = sorted([u_id, cu_id])
+                    cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
+                    c_row = cursor.fetchone()
+                    if c_row:
+                        cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC", (c_row["id"],))
+                        rows = cursor.fetchall()
+                else:
+                    cursor.execute("""
+                        SELECT m.* FROM messages m
+                        JOIN conversations c ON m.conversation_id = c.id
+                        WHERE c.participant_one = ? OR c.participant_two = ?
+                        ORDER BY m.created_at ASC
+                    """, (u_id, u_id))
+                    rows = cursor.fetchall()
 
     conn.close()
     

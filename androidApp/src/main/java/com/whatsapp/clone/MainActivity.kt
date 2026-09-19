@@ -60,6 +60,7 @@ import com.whatsapp.clone.config.NetworkConfig
 import org.json.JSONObject
 import com.whatsapp.clone.platform.AgoraCallManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.UUID
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -366,14 +367,34 @@ object UserApiClient {
 }
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        val activeCallIntent = MutableStateFlow<android.content.Intent?>(null)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleCallIntent(intent)
         setContent {
             val settingsVm: SettingsViewModel = viewModel()
             val settingsState by settingsVm.settingsState.collectAsState()
             WhatsAppTheme(appTheme = settingsState.appTheme) {
                 VibeSyncApp(settingsVm = settingsVm)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleCallIntent(intent)
+    }
+
+    private fun handleCallIntent(intent: android.content.Intent?) {
+        if (intent?.hasExtra("ACCEPTED_CALL_CHANNEL") == true) {
+            val ch = intent.getStringExtra("ACCEPTED_CALL_CHANNEL")
+            android.util.Log.d("VibeSync", "MainActivity received accepted call intent for channel: $ch")
+            activeCallIntent.value = intent
         }
     }
 }
@@ -550,6 +571,8 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     var activeChatPartner by remember { mutableStateOf<UserUI?>(null) }
     var isInCall by remember { mutableStateOf(false) }
     var isCallVideo by remember { mutableStateOf(false) }
+    var activeCallChannel by remember { mutableStateOf<String?>(null) }
+    var activeCallToken by remember { mutableStateOf("") }
     var isAdminMode by remember { mutableStateOf(false) }
 
     val offlineRepository = remember { com.whatsapp.clone.repository.AndroidOfflineSyncRepository() }
@@ -639,12 +662,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                                 }
                             }
                             if (partnerUsername != partnerId) {
-                                val usernameThread = chatThreads.getOrPut(partnerUsername) { mutableStateListOf() }
-                                dbMsgs.forEach { msg ->
-                                    if (!usernameThread.any { it.id == msg.id }) {
-                                        usernameThread.add(msg)
-                                    }
-                                }
+                                chatThreads[partnerUsername] = threadList
                             }
                         }
                     }
@@ -654,10 +672,31 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     recentChats.addAll(realUsers)
                 }
             }
+
+            // Always ensure System Admin appears in recent chats and load admin message history
+            val adminEntry = UserUI("admin", "admin", "System Admin", "Official VibeSync Administrator")
+            if (!recentChats.any { it.id == "admin" }) {
+                recentChats.add(0, adminEntry)
+            }
+            // Load admin messages from backend using the admin-specific endpoint
+            try {
+                val adminMsgs = UserApiClient.fetchMessages("admin", username, context)
+                if (adminMsgs.isNotEmpty()) {
+                    val adminThread = chatThreads.getOrPut("admin") { mutableStateListOf() }
+                    adminMsgs.forEach { msg ->
+                        if (!adminThread.any { it.id == msg.id }) {
+                            adminThread.add(msg)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("VibeSync", "Admin message sync failed: ${e.message}")
+            }
         } catch (e: Exception) {
             android.util.Log.e("VibeSync", "Error loading conversations: ${e.message}")
         }
     }
+
 
     // Dual-Path Call Signaling Gateway
     // Starts WebSocket relay + Agora Chat listener after identity is resolved.
@@ -752,8 +791,44 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                 if (partnerUsername.isNotBlank() && partnerUsername != partnerId) {
                     offlineRepository.addMessageToConversation(partnerUsername, domainMsg)
                 }
+
+                // 4. Show system notification for incoming message (so user sees it even when not in chat)
+                try {
+                    val notifManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    val channelId = "vibesync_messages"
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        val channel = android.app.NotificationChannel(
+                            channelId,
+                            "Messages",
+                            android.app.NotificationManager.IMPORTANCE_HIGH
+                        ).apply {
+                            description = "Incoming messages from VibeSync"
+                            enableVibration(true)
+                        }
+                        notifManager.createNotificationChannel(channel)
+                    }
+                    val openIntent = android.content.Intent(context, MainActivity::class.java).apply {
+                        flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    }
+                    val pendingIntent = android.app.PendingIntent.getActivity(
+                        context, (System.currentTimeMillis() % 10000).toInt(), openIntent,
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                    )
+                    val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                        .setSmallIcon(android.R.drawable.ic_dialog_email)
+                        .setContentTitle(partnerDisplayName)
+                        .setContentText(msg.content.take(100))
+                        .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                        .setAutoCancel(true)
+                        .setContentIntent(pendingIntent)
+                        .build()
+                    notifManager.notify(partnerId.hashCode(), notification)
+                } catch (e: Exception) {
+                    android.util.Log.w("VibeSync", "Failed to show notification: ${e.message}")
+                }
             }
         }
+
 
         // Fetch user conversations from backend on login / startup
         signalingScope.launch {
@@ -783,24 +858,31 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
         }
     }
 
-    // Handle call accepted via IncomingCallActivity returning to MainActivity
-    val incomingAcceptedChannel  = (context as? android.app.Activity)?.intent?.getStringExtra("ACCEPTED_CALL_CHANNEL")
-    val incomingAcceptedCallerId = (context as? android.app.Activity)?.intent?.getStringExtra("ACCEPTED_CALL_CALLER_ID")
-    val incomingAcceptedName     = (context as? android.app.Activity)?.intent?.getStringExtra("ACCEPTED_CALL_CALLER_NAME")
-    val incomingAcceptedVideo    = (context as? android.app.Activity)?.intent?.getBooleanExtra("ACCEPTED_CALL_IS_VIDEO", false) ?: false
-    LaunchedEffect(incomingAcceptedChannel) {
-        if (!incomingAcceptedChannel.isNullOrBlank() && !isInCall) {
+    // Observe accepted calls from MainActivity intent (handles both cold starts and onNewIntent)
+    val pendingCallIntent by MainActivity.activeCallIntent.collectAsState()
+    LaunchedEffect(pendingCallIntent) {
+        val callIntent = pendingCallIntent ?: return@LaunchedEffect
+        val channel = callIntent.getStringExtra("ACCEPTED_CALL_CHANNEL")
+        if (!channel.isNullOrBlank()) {
+            val callerId = callIntent.getStringExtra("ACCEPTED_CALL_CALLER_ID")?.ifBlank { "admin" } ?: "admin"
+            val callerName = callIntent.getStringExtra("ACCEPTED_CALL_CALLER_NAME")?.ifBlank { "System Admin" } ?: "System Admin"
+            val isVideo = callIntent.getBooleanExtra("ACCEPTED_CALL_IS_VIDEO", false)
+            val token = callIntent.getStringExtra("ACCEPTED_CALL_TOKEN") ?: ""
+
+            android.util.Log.i("VibeSync", "Connecting incoming call: caller=$callerName channel=$channel video=$isVideo tokenLength=${token.length}")
+
             activeChatPartner = UserUI(
-                id = incomingAcceptedCallerId ?: "",
-                username = incomingAcceptedName ?: "",
-                displayName = incomingAcceptedName ?: "Unknown"
+                id = callerId,
+                username = callerName,
+                displayName = callerName
             )
-            isCallVideo = incomingAcceptedVideo
+            activeCallChannel = channel
+            activeCallToken = token
+            isCallVideo = isVideo
             isInCall = true
-            // Join Agora RTC channel
-            val callManager = com.whatsapp.clone.platform.AgoraCallManager.instance
-            callManager.init(context, AGORA_APP_ID)
-            callManager.joinCall("", incomingAcceptedChannel, 0, incomingAcceptedVideo)
+
+            // Clear processed intent
+            MainActivity.activeCallIntent.value = null
         }
     }
 
@@ -965,10 +1047,12 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                                     isCallVideo = false
                                     val p = activeChatPartner!!
                                     callLogs.add(0, CallLogUI(partner = p, isVideo = false))
+                                    val channelName = p.id
+                                    activeCallChannel = channelName
+                                    activeCallToken = ""
                                     isInCall = true
 
                                     // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
-                                    val channelName = p.id
                                     com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
                                         recipientId = p.id,
                                         callerName  = assignedDeviceUsername,
@@ -1008,10 +1092,12 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                                     isCallVideo = true
                                     val p = activeChatPartner!!
                                     callLogs.add(0, CallLogUI(partner = p, isVideo = true))
+                                    val channelName = p.id
+                                    activeCallChannel = channelName
+                                    activeCallToken = ""
                                     isInCall = true
 
                                     // Send dual-path CALL_INVITE signals (Agora Chat + WebSocket relay)
-                                    val channelName = p.id
                                     com.whatsapp.clone.platform.AgoraChatManager.instance.sendCallInvite(
                                         recipientId = p.id,
                                         callerName  = assignedDeviceUsername,
@@ -1243,6 +1329,8 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
             if (isInCall) {
                 CallOverlayScreen(
                     partner = activeChatPartner,
+                    channelName = activeCallChannel ?: (activeChatPartner?.id ?: "vibe_sync_channel"),
+                    token = activeCallToken,
                     isVideo = isCallVideo,
                     onEndCall = {
                         // Send CALL_END signal to remote party
@@ -1252,7 +1340,12 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                         }
                         com.whatsapp.clone.platform.AgoraCallManager.instance.leaveCall()
                         com.whatsapp.clone.platform.IncomingCallNotificationManager.cancel(context)
+                        try {
+                            context.stopService(android.content.Intent(context, com.whatsapp.clone.platform.OngoingCallService::class.java))
+                        } catch (_: Exception) {}
                         isInCall = false
+                        activeCallChannel = null
+                        activeCallToken = ""
                     }
                 )
             }
@@ -1985,6 +2078,8 @@ fun ChatRoomScreen(
 @Composable
 fun CallOverlayScreen(
     partner: UserUI?,
+    channelName: String = partner?.id ?: "vibe_sync_channel",
+    token: String = "",
     isVideo: Boolean = false,
     onEndCall: () -> Unit
 ) {
@@ -1993,18 +2088,54 @@ fun CallOverlayScreen(
     val isMuted by callManager.isMuted.collectAsState()
     val isSpeakerOn by callManager.isSpeakerOn.collectAsState()
     val remoteUid by callManager.remoteUid.collectAsState()
+    val isJoined by callManager.isJoined.collectAsState()
 
-    LaunchedEffect(Unit) {
-        callManager.init(context, AGORA_APP_ID)
-        callManager.joinCall(
-            token = "",
-            channelName = partner?.id ?: "vibe_sync_channel",
-            uid = 0,
-            isVideo = isVideo
-        )
+    var callSeconds by remember { mutableStateOf(0) }
+
+    LaunchedEffect(remoteUid) {
+        if (remoteUid != null) {
+            while (true) {
+                delay(1000)
+                callSeconds++
+            }
+        } else {
+            callSeconds = 0
+        }
     }
 
-    DisposableEffect(Unit) {
+    val formattedDuration = remember(callSeconds) {
+        val mins = callSeconds / 60
+        val secs = callSeconds % 60
+        "%02d:%02d".format(mins, secs)
+    }
+
+    // Permission launcher for in-call safety
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        val perms = if (isVideo) {
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+        } else {
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        }
+        permissionLauncher.launch(perms)
+    }
+
+    LaunchedEffect(channelName) {
+        if (channelName.isNotBlank()) {
+            callManager.init(context, AGORA_APP_ID)
+            callManager.joinCall(
+                token = token,
+                channelName = channelName,
+                uid = 0,
+                isVideo = isVideo
+            )
+        }
+    }
+
+    DisposableEffect(channelName) {
         onDispose {
             callManager.leaveCall()
         }
@@ -2026,6 +2157,18 @@ fun CallOverlayScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+                // Top Overlay with duration
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 40.dp, start = 20.dp, end = 20.dp)
+                        .align(Alignment.TopStart)
+                ) {
+                    Column {
+                        Text(partner?.displayName ?: "User", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Connected ($formattedDuration) • HD Video", color = WaGreenLight, fontSize = 13.sp)
+                    }
+                }
             } else {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -2034,7 +2177,10 @@ fun CallOverlayScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = WaGreenPrimary)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("Connecting Agora Video to ${partner?.displayName ?: "User"}...", color = Color.White)
+                        Text(
+                            if (isJoined) "Connecting to Admin Video..." else "Joining Agora Channel...",
+                            color = Color.White
+                        )
                     }
                 }
             }
@@ -2042,7 +2188,7 @@ fun CallOverlayScreen(
             // Local Video Preview Box Overlay
             Box(
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(top = 40.dp, end = 16.dp)
                     .size(120.dp, 160.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color.Black)
@@ -2069,7 +2215,13 @@ fun CallOverlayScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(partner?.displayName ?: "User", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(if (remoteUid != null) "Connected • Agora HD Voice" else "Ringing...", color = WaGreenLight, fontSize = 14.sp)
+                    Text(
+                        if (remoteUid != null) "Connected ($formattedDuration) • Agora HD Voice"
+                        else if (isJoined) "Connecting to Admin Voice..."
+                        else "Ringing...",
+                        color = if (remoteUid != null) WaGreenLight else Color.LightGray,
+                        fontSize = 14.sp
+                    )
                 }
 
                 Box(

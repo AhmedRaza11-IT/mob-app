@@ -39,6 +39,7 @@ object IncomingCallNotificationManager {
     const val EXTRA_IS_VIDEO    = "extra_is_video"
     const val EXTRA_CHANNEL     = "extra_channel_name"
     const val EXTRA_CALL_ID     = "extra_call_id"
+    const val EXTRA_TOKEN       = "extra_token"
 
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -48,15 +49,18 @@ object IncomingCallNotificationManager {
         acquireWakeLock(context)
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val effectiveCallerId = event.callerId.ifBlank { "admin" }
+        val effectiveCallerName = event.callerName.ifBlank { "System Admin" }
 
         // Full-screen intent → IncomingCallActivity (launched when device is locked / screen off)
         val fullScreenIntent = Intent(context, IncomingCallActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_CALLER_ID,   event.callerId)
-            putExtra(EXTRA_CALLER_NAME, event.callerName)
+            putExtra(EXTRA_CALLER_ID,   effectiveCallerId)
+            putExtra(EXTRA_CALLER_NAME, effectiveCallerName)
             putExtra(EXTRA_IS_VIDEO,    event.isVideo)
             putExtra(EXTRA_CHANNEL,     event.channelName)
             putExtra(EXTRA_CALL_ID,     event.callId)
+            putExtra(EXTRA_TOKEN,       event.token)
         }
         val fullScreenPi = PendingIntent.getActivity(
             context, 0, fullScreenIntent,
@@ -66,11 +70,12 @@ object IncomingCallNotificationManager {
         // Accept action
         val acceptIntent = Intent(ACTION_ACCEPT).apply {
             setPackage(context.packageName)
-            putExtra(EXTRA_CALLER_ID,   event.callerId)
-            putExtra(EXTRA_CALLER_NAME, event.callerName)
+            putExtra(EXTRA_CALLER_ID,   effectiveCallerId)
+            putExtra(EXTRA_CALLER_NAME, effectiveCallerName)
             putExtra(EXTRA_IS_VIDEO,    event.isVideo)
             putExtra(EXTRA_CHANNEL,     event.channelName)
             putExtra(EXTRA_CALL_ID,     event.callId)
+            putExtra(EXTRA_TOKEN,       event.token)
         }
         val acceptPi = PendingIntent.getBroadcast(
             context, 1, acceptIntent,
