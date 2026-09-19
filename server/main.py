@@ -20,10 +20,11 @@ except ImportError:
 from fastapi.responses import HTMLResponse
 
 try:
-    from agora_token_builder import RtcTokenBuilder, Role_Publisher
+    from agora_token_builder import RtcTokenBuilder
+    Role_Publisher = getattr(RtcTokenBuilder, 'Role_Publisher', 1)
 except ImportError:
     RtcTokenBuilder = None
-    Role_Publisher = None
+    Role_Publisher = 1
 
 try:
     from dotenv import load_dotenv
