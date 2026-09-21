@@ -59,7 +59,7 @@ export default function Sidebar() {
         {navItems.map((item) => {
           const isActive = item.exact
             ? pathname === item.href
-            : pathname.startsWith(item.href);
+            : Boolean(pathname?.startsWith(item.href));
 
           return (
             <Link

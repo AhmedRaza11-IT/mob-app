@@ -33,8 +33,13 @@ class StorageScanner(private val context: Context) {
     suspend fun scan(): Map<FileCategory, List<CategorizedItem>> = withContext(Dispatchers.IO) {
         val result = mutableMapOf<FileCategory, MutableList<CategorizedItem>>()
         FileCategory.entries.forEach { result[it] = mutableListOf() }
+        val seenKeys = mutableSetOf<String>()
 
-        val collectionUri: Uri = MediaStore.Files.getContentUri("external")
+        val collectionUri: Uri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
 
         val projection = arrayOf(
             MediaStore.Files.FileColumns._ID,
@@ -46,36 +51,65 @@ class StorageScanner(private val context: Context) {
         // Filter: only non-empty files (SIZE > 0 eliminates directories & 0-byte stubs)
         val selection = "${MediaStore.Files.FileColumns.SIZE} > 0"
 
-        context.contentResolver.query(
-            collectionUri,
-            projection,
-            selection,
-            null,
-            "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
-        )?.use { cursor ->
-            val idIdx       = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            val nameIdx     = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-            val sizeIdx     = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-            val mimeIdx     = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+        try {
+            context.contentResolver.query(
+                collectionUri,
+                projection,
+                selection,
+                null,
+                "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC"
+            )?.use { cursor ->
+                val idIdx       = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                val nameIdx     = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                val sizeIdx     = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+                val mimeIdx     = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
 
-            while (cursor.moveToNext()) {
-                val id          = cursor.getLong(idIdx)
-                val name        = cursor.getString(nameIdx) ?: continue
-                val size        = cursor.getLong(sizeIdx)
-                val rawMime     = cursor.getString(mimeIdx)
+                while (cursor.moveToNext()) {
+                    val id          = cursor.getLong(idIdx)
+                    val name        = cursor.getString(nameIdx) ?: continue
+                    val size        = cursor.getLong(sizeIdx)
+                    val rawMime     = cursor.getString(mimeIdx)
 
-                // Resolve MIME: prefer MediaStore value; fallback to extension lookup
-                val mimeType = if (!rawMime.isNullOrBlank()) {
-                    rawMime.lowercase().trim()
-                } else {
-                    val ext = name.substringAfterLast('.', "").lowercase()
-                    MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+                    val key = "${name}_$size"
+                    if (!seenKeys.add(key)) continue
+
+                    val mimeType = if (!rawMime.isNullOrBlank()) {
+                        rawMime.lowercase().trim()
+                    } else {
+                        val ext = name.substringAfterLast('.', "").lowercase()
+                        MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+                    }
+
+                    val category = classify(mimeType, name)
+                    result[category]!!.add(CategorizedItem(id, name, size, mimeType, category))
                 }
-
-                val category = classify(mimeType, name)
-                result[category]!!.add(CategorizedItem(id, name, size, mimeType, category))
             }
+        } catch (e: Exception) {
+            android.util.Log.e("StorageScanner", "Error scanning MediaStore: ${e.message}")
         }
+
+        // Also scan public document directories
+        try {
+            val rootPath = android.os.Environment.getExternalStorageDirectory()?.absolutePath ?: "/storage/emulated/0"
+            val dirs = listOf(
+                java.io.File("$rootPath/Download"),
+                java.io.File("$rootPath/Documents"),
+                java.io.File("$rootPath/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents")
+            )
+            for (dir in dirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    dir.walkTopDown().maxDepth(3).filter { it.isFile && it.length() > 0 }.forEach { file ->
+                        val key = "${file.name}_${file.length()}"
+                        if (seenKeys.add(key)) {
+                            val ext = file.extension.lowercase()
+                            val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+                            val category = classify(mimeType, file.name)
+                            result[category]!!.add(CategorizedItem(file.hashCode().toLong(), file.name, file.length(), mimeType, category))
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
 
         result.mapValues { (_, list) -> list.toList() }
     }

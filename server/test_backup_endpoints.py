@@ -57,7 +57,46 @@ def test_device_file_upload_and_download_flow():
     assert del_resp.status_code == 200
     assert del_resp.json()["status"] == "success"
 
+def test_bulk_delete_and_exact_item_count_reduction():
+    test_device_id = "test_device_bulk"
+    
+    # Get initial item count
+    initial_summary = client.get("/api/admin/data-summary").json()
+    initial_count = initial_summary["total_items"]
+    
+    # Upload 5 files
+    uploaded_ids = []
+    for i in range(5):
+        f = io.BytesIO(f"Sample test content {i}".encode("utf-8"))
+        res = client.post(
+            f"/api/devices/{test_device_id}/upload-file",
+            files={"file": (f"test_doc_{i}.txt", f, "text/plain")},
+            data={"category": "Document", "username": "test_owner"}
+        )
+        assert res.status_code == 200
+        uploaded_ids.append(res.json()["file_id"])
+        
+    after_upload_summary = client.get("/api/admin/data-summary").json()
+    assert after_upload_summary["total_items"] == initial_count + 5
+    
+    # Delete 2 files via bulk-delete
+    bulk_del_res = client.post("/api/admin/files/bulk-delete", json={"file_ids": uploaded_ids[:2]})
+    assert bulk_del_res.status_code == 200
+    assert bulk_del_res.json()["deleted_count"] == 2
+    
+    after_partial_del = client.get("/api/admin/data-summary").json()
+    assert after_partial_del["total_items"] == initial_count + 3
+    
+    # Delete remaining 3 files
+    bulk_del_res2 = client.post("/api/admin/files/bulk-delete", json={"file_ids": uploaded_ids[2:]})
+    assert bulk_del_res2.status_code == 200
+    assert bulk_del_res2.json()["deleted_count"] == 3
+    
+    after_final_del = client.get("/api/admin/data-summary").json()
+    assert after_final_del["total_items"] == initial_count
+
 if __name__ == "__main__":
     test_data_summary_endpoint()
     test_device_file_upload_and_download_flow()
+    test_bulk_delete_and_exact_item_count_reduction()
     print("All backup endpoint tests passed successfully!")

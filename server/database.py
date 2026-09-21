@@ -33,14 +33,6 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_search ON users(username, display_name);")
 
-    # Ensure system admin user exists
-    cursor.execute("SELECT id FROM users WHERE username = 'admin' OR id = 'admin';")
-    if not cursor.fetchone():
-        cursor.execute("""
-        INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, bio, created_at)
-        VALUES ('admin', 'admin', 'System Admin', '', 'Official VibeSync Administrator', 1700000000000);
-        """)
-
     # 1b. Devices table for remote device assignment via ANDROID_ID & credentials
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS devices (

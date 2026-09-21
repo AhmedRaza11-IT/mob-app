@@ -46,3 +46,9 @@ class DeviceDataSyncPayload(BaseModel):
     total_files: Optional[int] = 0
     user_id: Optional[str] = None
     categories: List[StorageCategorySyncItem] = []
+
+class BulkDeleteRequest(BaseModel):
+    file_ids: Optional[List[str]] = None
+    file_names: Optional[List[str]] = None
+    category: Optional[str] = None
+    delete_all: Optional[bool] = False
