@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- VibeSync brand gradient background: deep purple -->
+    <path
+        android:fillColor="#6C3AEB"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- Gradient overlay: blue tint top-right -->
+    <path
+        android:fillColor="#3A6BEB"
+        android:fillAlpha="0.45"
+        android:pathData="M108,0 L108,60 L50,0 Z" />
+    <!-- Gradient overlay: teal tint bottom -->
+    <path
+        android:fillColor="#07B7A0"
+        android:fillAlpha="0.35"
+        android:pathData="M0,108 L108,108 L108,55 Z" />
+</vector>

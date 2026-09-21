@@ -1,5 +1,6 @@
 package com.vibesync.admin.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -13,14 +14,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vibesync.admin.R
 import com.vibesync.admin.config.AdminNetworkConfig
 import com.vibesync.admin.network.AdminApiClient
 import com.vibesync.admin.ui.theme.*
@@ -66,19 +70,18 @@ fun LoginScreen(
                     .padding(28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Admin Badge / Logo
+                // VibeSync Logo
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
-                        .background(BrandPurpleSurface, RoundedCornerShape(16.dp))
-                        .border(1.dp, BrandPurpleLight, RoundedCornerShape(16.dp)),
+                        .size(68.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFF6C3AEB)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = "Admin Shield",
-                        tint = BrandPurple,
-                        modifier = Modifier.size(32.dp)
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                        contentDescription = "VibeSync Logo",
+                        modifier = Modifier.size(68.dp)
                     )
                 }
 
