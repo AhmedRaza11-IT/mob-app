@@ -277,23 +277,9 @@ fun DevicesScreen(
                 items(filtered) { dev ->
                     DeviceCard(
                         device = dev,
-                        onOpenChat = { onOpenChat(dev.username, dev.deviceModel) },
-                        onStartVoiceCall = { onStartCall(dev.username, false) },
-                        onStartVideoCall = { onStartCall(dev.username, true) },
                         onEdit = { editingDevice = dev },
                         onSanitize = { sanitizingDevice = dev },
-                        onDeprovision = { deprovisioningDevice = dev },
-                        onToggleBlock = {
-                            scope.launch {
-                                try {
-                                    AdminApiClient.toggleBlockDevice(dev.deviceId, !dev.isBlocked)
-                                    refreshAll()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Block error: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
-                        onDelete = { deletingDevice = dev }
+                        onDeprovision = { deprovisioningDevice = dev }
                     )
                 }
             }
@@ -513,14 +499,9 @@ fun StatBox(label: String, value: String, color: Color, modifier: Modifier = Mod
 @Composable
 fun DeviceCard(
     device: DeviceItem,
-    onOpenChat: () -> Unit,
-    onStartVoiceCall: () -> Unit,
-    onStartVideoCall: () -> Unit,
     onEdit: () -> Unit,
     onSanitize: () -> Unit,
-    onDeprovision: () -> Unit,
-    onToggleBlock: () -> Unit,
-    onDelete: () -> Unit
+    onDeprovision: () -> Unit
 ) {
     val isOnline = System.currentTimeMillis() - device.lastSyncTimestamp < 3600000
     val isUnassigned = device.username == "Current User"
@@ -613,74 +594,39 @@ fun DeviceCard(
             // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (!isUnassigned) {
-                    Button(
-                        onClick = onOpenChat,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPurpleSurface),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandPurpleLight),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Text("💬 Chat", fontSize = 11.sp, color = BrandPurple, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Button(
-                        onClick = onStartVoiceCall,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldBg),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldBorder),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Text("📞 Call", fontSize = 11.sp, color = EmeraldSuccess, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Button(
-                        onClick = onStartVideoCall,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = SkyBg),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, SkyBorder),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Text("📹 Video", fontSize = 11.sp, color = SkyInfo, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-
                 Button(
                     onClick = onEdit,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Slate100),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Slate200),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier.weight(1f).height(34.dp)
                 ) {
-                    Text("✏ Edit", fontSize = 11.sp, color = Slate700, fontWeight = FontWeight.Medium)
+                    Text("✏ Edit", fontSize = 12.sp, color = Slate700, fontWeight = FontWeight.Medium)
                 }
 
                 Button(
                     onClick = onSanitize,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AmberBg),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, AmberBorder),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier.weight(1f).height(34.dp)
                 ) {
-                    Text("🧹 Nuke", fontSize = 11.sp, color = AmberWarning, fontWeight = FontWeight.Medium)
+                    Text("🧹 Sanitize", fontSize = 12.sp, color = AmberWarning, fontWeight = FontWeight.Medium)
                 }
 
                 Button(
                     onClick = onDeprovision,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = RoseBg),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, RoseBorder),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier.weight(1f).height(34.dp)
                 ) {
-                    Text("⚡ Kill", fontSize = 11.sp, color = RoseDanger, fontWeight = FontWeight.Medium)
+                    Text("⚡ Kill", fontSize = 12.sp, color = RoseDanger, fontWeight = FontWeight.Medium)
                 }
             }
         }

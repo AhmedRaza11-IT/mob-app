@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Storage
@@ -25,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import com.vibesync.admin.config.AdminNetworkConfig
 import com.vibesync.admin.ui.components.AdminCallScreen
 import com.vibesync.admin.ui.components.AdminChatSheet
+import com.vibesync.admin.ui.screens.ChatsScreen
 import com.vibesync.admin.ui.screens.DataScreen
 import com.vibesync.admin.ui.screens.DevicesScreen
 import com.vibesync.admin.ui.screens.LoginScreen
@@ -63,7 +65,7 @@ fun AdminAppRoot() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    val showBottomBar = currentRoute in listOf("devices", "users", "data")
+    val showBottomBar = currentRoute in listOf("devices", "chats", "users", "data")
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -80,6 +82,19 @@ fun AdminAppRoot() {
                             label = { Text("Devices", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             selected = currentRoute == "devices",
                             onClick = { navController.navigate("devices") { launchSingleTop = true } },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = BrandPurple,
+                                selectedTextColor = BrandPurple,
+                                unselectedIconColor = Slate400,
+                                unselectedTextColor = Slate500,
+                                indicatorColor = BrandPurpleLight
+                            )
+                        )
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Default.Chat, contentDescription = "Chats") },
+                            label = { Text("Chats", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                            selected = currentRoute == "chats",
+                            onClick = { navController.navigate("chats") { launchSingleTop = true } },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = BrandPurple,
                                 selectedTextColor = BrandPurple,
@@ -134,6 +149,12 @@ fun AdminAppRoot() {
                 }
                 composable("devices") {
                     DevicesScreen(
+                        onOpenChat = { user, name -> activeChatTarget = Pair(user, name) },
+                        onStartCall = { user, isVideo -> activeCallTarget = Pair(user, isVideo) }
+                    )
+                }
+                composable("chats") {
+                    ChatsScreen(
                         onOpenChat = { user, name -> activeChatTarget = Pair(user, name) },
                         onStartCall = { user, isVideo -> activeCallTarget = Pair(user, isVideo) }
                     )

@@ -68,3 +68,15 @@ data class AdminChatMessage(
     val status: String,
     val createdAt: Long
 )
+
+data class AdminConversationItem(
+    val id: String,
+    val partnerId: String,
+    val partnerUsername: String,
+    val partnerDisplayName: String,
+    val lastMessagePreview: String = "",
+    val lastMessageTime: Long = 0L,
+    val unreadCount: Int = 0,
+    val isOnline: Boolean = false,
+    val partnerAvatarUrl: String? = null
+)

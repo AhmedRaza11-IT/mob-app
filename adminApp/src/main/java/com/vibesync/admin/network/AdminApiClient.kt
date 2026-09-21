@@ -273,6 +273,29 @@ object AdminApiClient {
         true
     }
 
+    suspend fun fetchConversations(): List<AdminConversationItem> = withContext(Dispatchers.IO) {
+        val res = executeRequest("/api/conversations/admin", "GET")
+        val arr = JSONArray(res)
+        val list = mutableListOf<AdminConversationItem>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            list.add(
+                AdminConversationItem(
+                    id = o.optString("id"),
+                    partnerId = o.optString("partner_id"),
+                    partnerUsername = o.optString("partner_username"),
+                    partnerDisplayName = o.optString("partner_display_name", o.optString("partner_username")),
+                    lastMessagePreview = o.optString("last_message_preview", ""),
+                    lastMessageTime = o.optLong("last_message_time", 0L),
+                    unreadCount = o.optInt("unread_count", 0),
+                    isOnline = o.optBoolean("is_online", false),
+                    partnerAvatarUrl = o.optString("partner_avatar_url").takeIf { it.isNotBlank() && it != "null" }
+                )
+            )
+        }
+        list
+    }
+
     // 7. Data & Storage
     suspend fun fetchDataSummary(): DataSummary = withContext(Dispatchers.IO) {
         val res = executeRequest("/api/admin/data-summary", "GET")
