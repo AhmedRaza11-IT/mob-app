@@ -1251,12 +1251,13 @@ async def admin_sanitize_device(device_id: str):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
-    device = cursor.fetchone()
+    row = cursor.fetchone()
     conn.close()
 
+    device = dict(row) if row else None
     targets = [device_id]
     if device:
-        if device["username"]:
+        if device.get("username") and device["username"] != "Current User":
             targets.append(device["username"])
         if device.get("user_id"):
             targets.append(device["user_id"])
@@ -1286,12 +1287,13 @@ async def admin_deprovision_device(device_id: str):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
-    device = cursor.fetchone()
+    row = cursor.fetchone()
     conn.close()
 
+    device = dict(row) if row else None
     targets = [device_id]
     if device:
-        if device["username"]:
+        if device.get("username") and device["username"] != "Current User":
             targets.append(device["username"])
         if device.get("user_id"):
             targets.append(device["user_id"])
