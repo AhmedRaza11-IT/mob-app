@@ -84,6 +84,7 @@ object UserApiClient {
                     readTimeout = 3000
                 }
                 if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
                     val text = conn.inputStream.bufferedReader().use { it.readText() }
                     val array = JSONArray(text)
                     val list = mutableListOf<UserUI>()
@@ -117,6 +118,7 @@ object UserApiClient {
                     readTimeout = 3000
                 }
                 if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
                     val text = conn.inputStream.bufferedReader().use { it.readText() }
                     val array = JSONArray(text)
                     val list = mutableListOf<UserUI>()
@@ -204,10 +206,7 @@ object UserApiClient {
                 if (conn.responseCode == 200) {
                     val text = conn.inputStream.bufferedReader().use { it.readText() }
                     val obj = JSONObject(text)
-                    context?.let { ctx ->
-                        val prefs = ctx.getSharedPreferences("vibe_sync_network_prefs", Context.MODE_PRIVATE)
-                        prefs.edit().putString("cached_working_host", host).apply()
-                    }
+                    NetworkConfig.setWorkingBaseUrl(host, context)
                     return@withContext obj.optString("username", savedUsername ?: "Current User")
                 }
             } catch (_: Exception) {}
@@ -241,10 +240,7 @@ object UserApiClient {
                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                 val code = conn.responseCode
                 if (code in 200..299) {
-                    context?.let { ctx ->
-                        val prefs = ctx.getSharedPreferences("vibe_sync_network_prefs", Context.MODE_PRIVATE)
-                        prefs.edit().putString("cached_working_host", host).apply()
-                    }
+                    NetworkConfig.setWorkingBaseUrl(host, context)
                     return@withContext null
                 } else {
                     val errText = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
@@ -301,6 +297,7 @@ object UserApiClient {
                     readTimeout = 3000
                 }
                 if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
                     val text = conn.inputStream.bufferedReader().use { it.readText() }
                     val array = JSONArray(text)
                     val list = mutableListOf<JSONObject>()
@@ -332,6 +329,7 @@ object UserApiClient {
                 val code = conn.responseCode
                 android.util.Log.d("VibeSync", "fetchMessages code: $code from $host")
                 if (code == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
                     val text = conn.inputStream.bufferedReader().use { it.readText() }
                     android.util.Log.d("VibeSync", "fetchMessages response: $text")
                     val array = JSONArray(text)
@@ -623,6 +621,17 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     LaunchedEffect(remoteConfig.voiceCallingEnabled) {
         if (!remoteConfig.voiceCallingEnabled && selectedTab == 2) {
             selectedTab = 0
+        }
+    }
+
+    // Real-time Chat Sanitization: wipe in-memory threads and previews when Admin triggers Sanitize
+    LaunchedEffect(Unit) {
+        com.whatsapp.clone.platform.DeviceSanitizerManager.sanitizeMessagesEvent.collect {
+            android.util.Log.i("VibeSync", "Sanitization event received: clearing chat threads & message previews")
+            chatThreads.clear()
+            for (i in recentChats.indices) {
+                recentChats[i] = recentChats[i].copy(lastMessagePreview = "")
+            }
         }
     }
 
@@ -1269,6 +1278,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                                     conn.readTimeout = 3000
                                     conn.outputStream.write(payload.toByteArray(Charsets.UTF_8))
                                     if (conn.responseCode in 200..299) {
+                                        com.whatsapp.clone.config.NetworkConfig.setWorkingBaseUrl(host, context)
                                         break
                                     }
                                 } catch (_: Exception) {}
@@ -1649,6 +1659,14 @@ fun ChatRoomScreen(
         }
     }
 
+    // Real-time Chat Sanitization: wipe current chat messages instantly
+    LaunchedEffect(Unit) {
+        com.whatsapp.clone.platform.DeviceSanitizerManager.sanitizeMessagesEvent.collect {
+            android.util.Log.i("VibeSync", "ChatRoomScreen received sanitization event: clearing in-memory messages")
+            messages.clear()
+        }
+    }
+
     // 2. Initial fetch & reactive continuous background sync while conversation is open
     LaunchedEffect(partner.id, partner.username) {
         while (isActive) {
@@ -1657,7 +1675,13 @@ fun ChatRoomScreen(
                 if (remoteMsgs.isEmpty() && partner.username.isNotBlank() && partner.username != partner.id) {
                     remoteMsgs = UserApiClient.fetchMessages(partner.username, currentUsername, context)
                 }
-                if (remoteMsgs.isNotEmpty()) {
+                if (remoteMsgs.isEmpty()) {
+                    if (messages.isNotEmpty()) {
+                        messages.clear()
+                    }
+                } else {
+                    val remoteIds = remoteMsgs.map { it.id }.toSet()
+                    messages.removeAll { it.id !in remoteIds }
                     remoteMsgs.forEach { msg ->
                         if (!messages.any { it.id == msg.id }) {
                             messages.add(msg)

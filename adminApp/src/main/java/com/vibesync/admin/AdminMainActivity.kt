@@ -36,6 +36,7 @@ import kotlinx.coroutines.runBlocking
 class AdminMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AdminNetworkConfig.appContext = applicationContext
         setContent {
             AdminTheme {
                 AdminAppRoot()

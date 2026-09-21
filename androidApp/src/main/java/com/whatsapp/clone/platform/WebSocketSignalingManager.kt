@@ -103,7 +103,7 @@ class WebSocketSignalingManager private constructor() {
         if (isConnected || currentUserId.isNullOrBlank()) return
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
-            val delayMs = (1500L * (1 shl reconnectAttempts.coerceAtMost(3))).coerceIn(1500L, 10000L)
+            val delayMs = if (reconnectAttempts == 0) 300L else (1000L * (1 shl reconnectAttempts.coerceAtMost(3))).coerceIn(1000L, 8000L)
             Log.d(TAG, "Scheduling WebSocket reconnect in ${delayMs}ms (attempt #$reconnectAttempts)...")
             delay(delayMs)
             reconnectAttempts++
@@ -135,6 +135,13 @@ class WebSocketSignalingManager private constructor() {
                                 reconnectJob?.cancel()
                                 this@WebSocketSignalingManager.webSocket = webSocket
                                 connectionLatch.complete(true)
+
+                                try {
+                                    val httpBase = url.substringBefore("/ws").replace("ws://", "http://").replace("wss://", "https://")
+                                    com.whatsapp.clone.config.NetworkConfig.setWorkingBaseUrl(httpBase, appContext)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to update NetworkConfig working base URL: ${e.message}")
+                                }
                             }
 
                             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -162,7 +169,7 @@ class WebSocketSignalingManager private constructor() {
                             }
                         }
                         val ws = okHttpClient.newWebSocket(request, listener)
-                        val result = kotlinx.coroutines.withTimeoutOrNull(2500) {
+                        val result = kotlinx.coroutines.withTimeoutOrNull(2000) {
                             connectionLatch.await()
                         } ?: false
 

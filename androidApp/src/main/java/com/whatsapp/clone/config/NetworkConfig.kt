@@ -66,6 +66,21 @@ object NetworkConfig {
     }
 
     /**
+     * Updates the active working base HTTP URL and saves it to preferences.
+     */
+    fun setWorkingBaseUrl(url: String, context: Context? = null) {
+        val formatted = sanitizeUrl(url)
+        resolvedBaseUrl = formatted
+        context?.let { ctx ->
+            try {
+                val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.edit().putString(KEY_CACHED_HOST, formatted).apply()
+            } catch (_: Exception) {}
+        }
+        Log.i(TAG, "Working base URL updated to: $formatted")
+    }
+
+    /**
      * Discovers and tests server connectivity across all candidate IPs in parallel.
      * Caches and returns the first healthy server endpoint.
      */
@@ -77,11 +92,7 @@ object NetworkConfig {
         val verifiedHost = probeCandidatesInParallel(candidates)
 
         if (verifiedHost != null) {
-            resolvedBaseUrl = verifiedHost
-            context?.let { ctx ->
-                val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                prefs.edit().putString(KEY_CACHED_HOST, verifiedHost).apply()
-            }
+            setWorkingBaseUrl(verifiedHost, context)
             Log.i(TAG, "Successfully resolved active backend server: $verifiedHost")
             return@withContext verifiedHost
         }
@@ -99,7 +110,10 @@ object NetworkConfig {
     fun buildCandidateHosts(context: Context?): List<String> {
         val list = mutableListOf<String>()
 
-        // 1. User configured custom host (highest priority)
+        // 1. Currently verified active URL
+        resolvedBaseUrl?.let { if (it.isNotBlank()) list.add(it) }
+
+        // 2. User configured custom host (highest priority)
         if (context != null) {
             val custom = getCustomServerUrl(context)
             if (!custom.isNullOrBlank()) {
@@ -111,11 +125,15 @@ object NetworkConfig {
             }
         }
 
-        // 2. Current active PC IPv4
+        // 3. USB ADB Reverse / Localhost loopback (fastest when cable plugged in)
+        list.add("http://127.0.0.1:$DEFAULT_PORT")
+        list.add("http://localhost:$DEFAULT_PORT")
+
+        // 4. Current active PC IPv4 (Wi-Fi LAN)
         list.add("http://$DEFAULT_PC_IP:$DEFAULT_PORT")
         list.add("http://192.168.18.78:$DEFAULT_PORT")
 
-        // 3. Wi-Fi Gateway / Subnet Auto-Detection (if on Wi-Fi)
+        // 5. Wi-Fi Gateway / Subnet Auto-Detection (if on Wi-Fi)
         if (context != null) {
             try {
                 val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -125,8 +143,8 @@ object NetworkConfig {
                     val subnetPrefix = gatewayIp.substringBeforeLast(".")
                     list.add("http://$gatewayIp:$DEFAULT_PORT")
                     // Add common PC host offsets on the same subnet
-                    list.add("http://$subnetPrefix.75:$DEFAULT_PORT")
                     list.add("http://$subnetPrefix.78:$DEFAULT_PORT")
+                    list.add("http://$subnetPrefix.75:$DEFAULT_PORT")
                     list.add("http://$subnetPrefix.100:$DEFAULT_PORT")
                     list.add("http://$subnetPrefix.2:$DEFAULT_PORT")
                 }
@@ -135,12 +153,8 @@ object NetworkConfig {
             }
         }
 
-        // 4. Android Emulator loopback
+        // 6. Android Emulator loopback
         list.add("http://10.0.2.2:$DEFAULT_PORT")
-
-        // 5. USB ADB Reverse / Localhost loopback
-        list.add("http://127.0.0.1:$DEFAULT_PORT")
-        list.add("http://localhost:$DEFAULT_PORT")
 
         return list.distinct()
     }

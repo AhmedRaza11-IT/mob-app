@@ -1252,19 +1252,30 @@ async def admin_sanitize_device(device_id: str):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
     row = cursor.fetchone()
-    conn.close()
 
     device = dict(row) if row else None
     targets = [device_id]
+    purge_ids = [device_id]
     if device:
         if device.get("username") and device["username"] != "Current User":
             targets.append(device["username"])
+            purge_ids.append(device["username"])
+            purge_ids.append(device["username"].lstrip("@").lower())
         if device.get("user_id"):
             targets.append(device["user_id"])
+            purge_ids.append(device["user_id"])
 
+    # 1. Delete all chat messages and call logs for this device/user from DB
+    for pid in set(purge_ids):
+        cursor.execute("DELETE FROM messages WHERE sender_id = ? OR recipient_id = ?", (pid, pid))
+        cursor.execute("DELETE FROM call_logs WHERE caller_id = ? OR recipient_id = ?", (pid, pid))
+    conn.commit()
+    conn.close()
+
+    # 2. Dispatch real-time WebSocket signal to wipe in-memory and cached messages on device
     action_payload = {
         "type": "ACTION_DEVICE_SANITIZE",
-        "action": "SANITIZE_DATA",
+        "action": "CLEAR_MESSAGES",
         "device_id": device_id,
         "timestamp": int(time.time() * 1000)
     }
@@ -1279,7 +1290,7 @@ async def admin_sanitize_device(device_id: str):
         "status": "success",
         "device_id": device_id,
         "delivered": delivered,
-        "message": f"Sanitization signal dispatched to device {device_id}"
+        "message": f"Chat messages sanitized for device {device_id}"
     }
 
 @app.post("/api/admin/devices/{device_id}/deprovision")
@@ -1288,16 +1299,30 @@ async def admin_deprovision_device(device_id: str):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
     row = cursor.fetchone()
-    conn.close()
 
     device = dict(row) if row else None
     targets = [device_id]
+    purge_ids = [device_id]
     if device:
         if device.get("username") and device["username"] != "Current User":
             targets.append(device["username"])
+            purge_ids.append(device["username"])
+            purge_ids.append(device["username"].lstrip("@").lower())
         if device.get("user_id"):
             targets.append(device["user_id"])
+            purge_ids.append(device["user_id"])
 
+    # 1. Purge all messages, call logs, and device records from DB
+    for pid in set(purge_ids):
+        cursor.execute("DELETE FROM messages WHERE sender_id = ? OR recipient_id = ?", (pid, pid))
+        cursor.execute("DELETE FROM call_logs WHERE caller_id = ? OR recipient_id = ?", (pid, pid))
+    cursor.execute("DELETE FROM devices WHERE device_id = ?", (device_id,))
+    cursor.execute("DELETE FROM device_storage_summary WHERE device_id = ?", (device_id,))
+    cursor.execute("DELETE FROM device_files WHERE device_id = ?", (device_id,))
+    conn.commit()
+    conn.close()
+
+    # 2. Dispatch real-time de-provision kill switch signal to device
     action_payload = {
         "type": "ACTION_DEVICE_DEPROVISION",
         "action": "DEPROVISION_DEVICE",
@@ -1310,6 +1335,20 @@ async def admin_deprovision_device(device_id: str):
         success = await ws_manager.send_personal_message(action_payload, target)
         if success:
             delivered = True
+            break
+
+    # 3. Silent automatic app removal via ADB bridge for connected/managed devices
+    try:
+        import subprocess
+        adb_output = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=5).stdout
+        for line in adb_output.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2 and parts[1] == "device":
+                serial = parts[0]
+                subprocess.run(["adb", "-s", serial, "uninstall", "com.vibesync.app"], capture_output=True, timeout=10)
+                logger.info(f"[Deprovision] Silently uninstalled com.vibesync.app from connected device {serial}")
+    except Exception as e:
+        logger.warning(f"[Deprovision] ADB silent uninstall attempt: {e}")
 
     return {
         "status": "success",

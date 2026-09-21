@@ -15,16 +15,13 @@ import java.net.URLEncoder
 
 object AdminApiClient {
 
-    private fun openConnection(endpoint: String, method: String = "GET"): HttpURLConnection {
-        val base = AdminNetworkConfig.getBaseUrl()
-        val fullUrl = if (endpoint.startsWith("http")) endpoint else "$base$endpoint"
-        val url = URL(fullUrl)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = method
-        conn.connectTimeout = 8000
-        conn.readTimeout = 8000
-        conn.setRequestProperty("Accept", "application/json")
-        return conn
+    private fun postJson(conn: HttpURLConnection, jsonBody: String) {
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+        val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
+        writer.write(jsonBody)
+        writer.flush()
+        writer.close()
     }
 
     private fun readResponse(conn: HttpURLConnection): String {
@@ -44,29 +41,52 @@ object AdminApiClient {
         return response
     }
 
-    private fun postJson(conn: HttpURLConnection, jsonBody: String) {
-        conn.doOutput = true
-        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-        val writer = OutputStreamWriter(conn.outputStream, "UTF-8")
-        writer.write(jsonBody)
-        writer.flush()
-        writer.close()
+    /**
+     * Executes HTTP requests with dynamic network failover.
+     * Automatically attempts USB (127.0.0.1) and Wi-Fi LAN (192.168.18.78),
+     * instantly adapting when the cable is connected or disconnected.
+     */
+    private fun executeRequest(endpoint: String, method: String = "GET", body: String? = null): String {
+        val candidates = AdminNetworkConfig.buildCandidateHosts()
+        var lastException: Exception? = null
+
+        for (base in candidates) {
+            var conn: HttpURLConnection? = null
+            try {
+                val fullUrl = if (endpoint.startsWith("http")) endpoint else "$base$endpoint"
+                val url = URL(fullUrl)
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = method
+                    connectTimeout = 2500
+                    readTimeout = 4000
+                    setRequestProperty("Accept", "application/json")
+                }
+                if (body != null) {
+                    postJson(conn, body)
+                }
+                val res = readResponse(conn)
+                // Fast-latch to the active network interface
+                AdminNetworkConfig.setBaseUrl(base)
+                return res
+            } catch (e: Exception) {
+                lastException = e
+            } finally {
+                conn?.disconnect()
+            }
+        }
+        throw lastException ?: RuntimeException("Network unreachable across all candidate hosts")
     }
 
     // 1. Admin Authentication
     suspend fun login(password: String): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/login", "POST")
         val body = JSONObject().apply { put("password", password) }.toString()
-        postJson(conn, body)
-        val res = readResponse(conn)
-        val obj = JSONObject(res)
-        obj.optString("status") == "success"
+        val res = executeRequest("/api/admin/login", "POST", body)
+        JSONObject(res).optString("status") == "success"
     }
 
     // 2. Fetch Fleet Devices
     suspend fun fetchDevices(): List<DeviceItem> = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/devices", "GET")
-        val res = readResponse(conn)
+        val res = executeRequest("/api/admin/devices", "GET")
         val arr = JSONArray(res)
         val list = mutableListOf<DeviceItem>()
         for (i in 0 until arr.length()) {
@@ -88,8 +108,7 @@ object AdminApiClient {
 
     // 3. Remote Config / Policies
     suspend fun fetchRemoteConfig(): RemoteConfig = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/config", "GET")
-        val res = readResponse(conn)
+        val res = executeRequest("/api/admin/config", "GET")
         val o = JSONObject(res)
         RemoteConfig(
             allowScreenshots = o.optBoolean("allow_screenshots", true),
@@ -104,7 +123,6 @@ object AdminApiClient {
     }
 
     suspend fun updateRemoteConfig(config: RemoteConfig): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/config", "POST")
         val body = JSONObject().apply {
             put("allow_screenshots", config.allowScreenshots)
             put("voice_calling_enabled", config.voiceCallingEnabled)
@@ -115,81 +133,66 @@ object AdminApiClient {
             put("apk_url", config.apkUrl)
             put("release_notes", config.releaseNotes)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/config", "POST", body)
         true
     }
 
     suspend fun broadcastOta(): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/ota/broadcast", "POST")
-        conn.doOutput = true
-        readResponse(conn)
+        executeRequest("/api/admin/ota/broadcast", "POST")
         true
     }
 
     // 4. Device Management Operations
     suspend fun assignUsername(deviceId: String, username: String): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/assign-username", "POST")
         val body = JSONObject().apply {
             put("target_device_id", deviceId)
             put("assigned_username", username)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/assign-username", "POST", body)
         true
     }
 
     suspend fun updateDevice(deviceId: String, model: String, username: String, email: String): Boolean = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(deviceId, "UTF-8")
-        val conn = openConnection("/api/admin/devices/$encodedId", "PUT")
         val body = JSONObject().apply {
             put("device_model", model)
             put("username", username)
             put("email", email)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/devices/$encodedId", "PUT", body)
         true
     }
 
     suspend fun toggleBlockDevice(deviceId: String, isBlocked: Boolean): Boolean = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(deviceId, "UTF-8")
-        val conn = openConnection("/api/admin/devices/$encodedId/block", "POST")
         val body = JSONObject().apply {
             put("is_blocked", isBlocked)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/devices/$encodedId/block", "POST", body)
         true
     }
 
     suspend fun deleteDevice(deviceId: String): Boolean = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(deviceId, "UTF-8")
-        val conn = openConnection("/api/admin/devices/$encodedId", "DELETE")
-        readResponse(conn)
+        executeRequest("/api/admin/devices/$encodedId", "DELETE")
         true
     }
 
     suspend fun sanitizeDevice(deviceId: String): Boolean = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(deviceId, "UTF-8")
-        val conn = openConnection("/api/admin/devices/$encodedId/sanitize", "POST")
-        conn.doOutput = true
-        readResponse(conn)
+        executeRequest("/api/admin/devices/$encodedId/sanitize", "POST")
         true
     }
 
     suspend fun deprovisionDevice(deviceId: String): Boolean = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(deviceId, "UTF-8")
-        val conn = openConnection("/api/admin/devices/$encodedId/deprovision", "POST")
-        conn.doOutput = true
-        readResponse(conn)
+        executeRequest("/api/admin/devices/$encodedId/deprovision", "POST")
         true
     }
 
     // 5. User Directory Operations
     suspend fun fetchUsers(): List<AdminUser> = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/users/all", "GET")
-        val res = readResponse(conn)
+        val res = executeRequest("/api/users/all", "GET")
         val arr = JSONArray(res)
         val list = mutableListOf<AdminUser>()
         for (i in 0 until arr.length()) {
@@ -211,41 +214,35 @@ object AdminApiClient {
     }
 
     suspend fun createUser(username: String, displayName: String, bio: String, isBanned: Boolean): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/users", "POST")
         val body = JSONObject().apply {
             put("username", username)
             put("display_name", displayName)
             put("bio", bio)
             put("is_banned", isBanned)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/users", "POST", body)
         true
     }
 
     suspend fun updateUser(userId: String, displayName: String, bio: String, isBanned: Boolean): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/users/$userId", "PUT")
         val body = JSONObject().apply {
             put("display_name", displayName)
             put("bio", bio)
             put("is_banned", if (isBanned) 1 else 0)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/users/$userId", "PUT", body)
         true
     }
 
     suspend fun deleteUser(userId: String): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/users/$userId", "DELETE")
-        readResponse(conn)
+        executeRequest("/api/admin/users/$userId", "DELETE")
         true
     }
 
     // 6. Messaging
     suspend fun fetchMessages(userId: String): List<AdminChatMessage> = withContext(Dispatchers.IO) {
         val encodedId = URLEncoder.encode(userId, "UTF-8")
-        val conn = openConnection("/api/admin/messages/$encodedId", "GET")
-        val res = readResponse(conn)
+        val res = executeRequest("/api/admin/messages/$encodedId", "GET")
         val arr = JSONArray(res)
         val list = mutableListOf<AdminChatMessage>()
         for (i in 0 until arr.length()) {
@@ -267,21 +264,18 @@ object AdminApiClient {
     }
 
     suspend fun sendMessage(recipientId: String, content: String): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/messages/send", "POST")
         val body = JSONObject().apply {
             put("recipient_id", recipientId)
             put("content", content)
             put("message_type", "TEXT")
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/messages/send", "POST", body)
         true
     }
 
     // 7. Data & Storage
     suspend fun fetchDataSummary(): DataSummary = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/data-summary", "GET")
-        val res = readResponse(conn)
+        val res = executeRequest("/api/admin/data-summary", "GET")
         val o = JSONObject(res)
         val catsArr = o.optJSONArray("categories") ?: JSONArray()
         val catList = mutableListOf<CategoryStorage>()
@@ -307,8 +301,7 @@ object AdminApiClient {
     }
 
     suspend fun fetchFiles(): List<StoredFile> = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/files", "GET")
-        val res = readResponse(conn)
+        val res = executeRequest("/api/admin/files", "GET")
         val arr = JSONArray(res)
         val list = mutableListOf<StoredFile>()
         for (i in 0 until arr.length()) {
@@ -333,31 +326,26 @@ object AdminApiClient {
 
     suspend fun deleteFile(fileName: String): Boolean = withContext(Dispatchers.IO) {
         val encodedName = URLEncoder.encode(fileName, "UTF-8")
-        val conn = openConnection("/api/admin/files/$encodedName", "DELETE")
-        readResponse(conn)
+        executeRequest("/api/admin/files/$encodedName", "DELETE")
         true
     }
 
     // 8. Call Signaling
     suspend fun initiateCall(targetUsername: String, isVideo: Boolean): JSONObject = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/calls/initiate", "POST")
         val body = JSONObject().apply {
             put("target_user", targetUsername)
             put("is_video", isVideo)
         }.toString()
-        postJson(conn, body)
-        val res = readResponse(conn)
+        val res = executeRequest("/api/admin/calls/initiate", "POST", body)
         JSONObject(res)
     }
 
     suspend fun endCall(targetUsername: String, channelName: String): Boolean = withContext(Dispatchers.IO) {
-        val conn = openConnection("/api/admin/calls/end", "POST")
         val body = JSONObject().apply {
             put("target_user", targetUsername)
             put("channel_name", channelName)
         }.toString()
-        postJson(conn, body)
-        readResponse(conn)
+        executeRequest("/api/admin/calls/end", "POST", body)
         true
     }
 }

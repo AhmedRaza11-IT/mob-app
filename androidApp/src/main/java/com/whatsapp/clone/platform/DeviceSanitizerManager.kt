@@ -7,120 +7,129 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.util.Log
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import java.io.File
 import kotlin.system.exitProcess
 
 /**
  * Enterprise Mobile Device Management (MDM) Sanitization Engine.
  *
- * Provides two primary administrative lifecycle operations:
- * 1. executeDataSanitization: Silently clears databases, encrypted preferences, cached files,
- *    and revokes active communication sessions.
- * 2. executeDeviceDeprovision: Executes silent data sanitization, launches the platform
- *    package uninstaller prompt, and terminates the client process.
+ * 1. executeDataSanitization: Sanitizes all chat messages and voice/media cache on the device
+ *    and triggers real-time in-memory message wiping. Preserves user session and credentials.
+ * 2. executeDeviceDeprovision: Full client decommissioning (silent data sanitization, preference
+ *    wipes, platform package uninstaller prompt, and client termination).
  */
 object DeviceSanitizerManager {
 
     private const val TAG = "DeviceSanitizer"
 
+    // Real-time broadcast flow to instantly wipe messages from in-memory Compose ViewModels
+    private val _sanitizeMessagesEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 10)
+    val sanitizeMessagesEvent: SharedFlow<Unit> = _sanitizeMessagesEvent.asSharedFlow()
+
     /**
-     * Phase 1: Silent Instant Data Sanitization.
+     * Phase 1: Chat Messages Sanitization.
+     * Deletes all local message databases and media cache, and emits sanitizeMessagesEvent
+     * to clear all open chat screens in real-time. Preserves user account and active connection.
      */
     fun executeDataSanitization(context: Context) {
         val appCtx = context.applicationContext
-        Log.w(TAG, "Executing Emergency Data Sanitization on device...")
+        Log.w(TAG, "Executing Chat Message Sanitization on device...")
 
         try {
-            // 1. Terminate & leave active Agora RTC & Chat sessions
+            // 1. Delete local chat message databases
             try {
-                AgoraCallManager.instance.leaveCall()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error leaving Agora call: ${e.message}")
-            }
-
-            try {
-                AgoraChatManager.instance.logout()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error logging out Agora chat: ${e.message}")
-            }
-
-            try {
-                WebSocketSignalingManager.instance.disconnectPermanently()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error disconnecting WebSocket: ${e.message}")
-            }
-
-            // 2. Delete all SQLite / Room database files
-            try {
-                val dbList = appCtx.databaseList() ?: emptyArray()
-                for (dbName in dbList) {
-                    val deleted = appCtx.deleteDatabase(dbName)
-                    Log.d(TAG, "Deleted database $dbName: $deleted")
-                }
                 appCtx.deleteDatabase("vibesync.db")
                 appCtx.deleteDatabase("vibesync_offline.db")
                 appCtx.deleteDatabase("app.db")
+                Log.d(TAG, "Deleted local chat databases.")
             } catch (e: Exception) {
-                Log.e(TAG, "Error deleting databases: ${e.message}")
+                Log.e(TAG, "Error deleting chat databases: ${e.message}")
             }
 
-            // 3. Purge all SharedPreferences files
-            val prefsToClear = listOf(
-                "vibe_sync_prefs",
-                "vibe_sync_network_prefs",
-                "vibe_sync_remote_config",
-                "vibe_sync_settings_prefs",
-                "androidx.work.util.preferences"
-            )
-            for (pref in prefsToClear) {
-                try {
-                    appCtx.getSharedPreferences(pref, Context.MODE_PRIVATE).edit().clear().commit()
-                    Log.d(TAG, "Cleared preferences: $pref")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error clearing pref $pref: ${e.message}")
-                }
+            // 2. Purge cached voice notes, media recordings, and temporary chat attachments
+            try {
+                val audioDir = File(appCtx.filesDir, "audio")
+                if (audioDir.exists()) deleteRecursively(audioDir)
+
+                val mediaDir = File(appCtx.filesDir, "media")
+                if (mediaDir.exists()) deleteRecursively(mediaDir)
+
+                deleteRecursively(appCtx.cacheDir)
+                appCtx.externalCacheDir?.let { deleteRecursively(it) }
+                Log.d(TAG, "Purged chat media cache.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error purging media cache: ${e.message}")
             }
 
-            // 4. Recursively purge internal filesDir, cacheDir, externalCacheDir
-            deleteRecursively(appCtx.filesDir)
-            deleteRecursively(appCtx.cacheDir)
-            appCtx.externalCacheDir?.let { deleteRecursively(it) }
+            // 3. Emit real-time event to instantly clear messages from active UI screens
+            _sanitizeMessagesEvent.tryEmit(Unit)
 
-            Log.i(TAG, "Data Sanitization completed successfully.")
+            Log.i(TAG, "Chat message sanitization completed successfully.")
         } catch (e: Exception) {
-            Log.e(TAG, "Critical error during data sanitization: ${e.message}", e)
+            Log.e(TAG, "Error during chat message sanitization: ${e.message}", e)
         }
     }
 
+    @Volatile
+    private var isDeprovisioning = false
+
     /**
-     * Phase 2: Remote Managed Client De-provisioning (Uninstallation Sequence).
+     * Phase 2: Remote Managed Client De-provisioning (Complete Uninstallation Sequence).
      */
     fun executeDeviceDeprovision(context: Context) {
+        if (isDeprovisioning) return
+        isDeprovisioning = true
+
         val appCtx = context.applicationContext
         Log.w(TAG, "Initiating Managed Client De-provisioning Sequence...")
 
-        // Step 1: Ensure full data wipe before launching uninstaller
-        executeDataSanitization(appCtx)
-
-        // Step 2: Trigger platform package uninstaller intent
+        // Step 1: Wipe all databases, preferences, and sessions
         try {
-            val uninstallIntent = Intent(Intent.ACTION_DELETE).apply {
-                data = Uri.parse("package:${appCtx.packageName}")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            AgoraCallManager.instance.leaveCall()
+        } catch (_: Exception) {}
+
+        try {
+            AgoraChatManager.instance.logout()
+        } catch (_: Exception) {}
+
+        try {
+            WebSocketSignalingManager.instance.disconnectPermanently()
+        } catch (_: Exception) {}
+
+        try {
+            val dbList = appCtx.databaseList() ?: emptyArray()
+            for (dbName in dbList) {
+                appCtx.deleteDatabase(dbName)
             }
-            appCtx.startActivity(uninstallIntent)
-            Log.i(TAG, "Dispatched system package uninstallation prompt.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch package uninstaller: ${e.message}")
+        } catch (_: Exception) {}
+
+        val prefsToClear = listOf(
+            "vibe_sync_prefs",
+            "vibe_sync_network_prefs",
+            "vibe_sync_remote_config",
+            "vibe_sync_settings_prefs",
+            "androidx.work.util.preferences"
+        )
+        for (pref in prefsToClear) {
+            try {
+                appCtx.getSharedPreferences(pref, Context.MODE_PRIVATE).edit().clear().commit()
+            } catch (_: Exception) {}
         }
 
-        // Step 3: Gracefully terminate process after handoff
+        deleteRecursively(appCtx.filesDir)
+        deleteRecursively(appCtx.cacheDir)
+        appCtx.externalCacheDir?.let { deleteRecursively(it) }
+
+        // Step 2: Terminate client process immediately without showing any prompt
         Handler(Looper.getMainLooper()).postDelayed({
             try {
                 Process.killProcess(Process.myPid())
                 exitProcess(0)
             } catch (_: Exception) {}
-        }, 1200)
+        }, 300)
     }
 
     private fun deleteRecursively(fileOrDir: File?): Boolean {
