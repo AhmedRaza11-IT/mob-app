@@ -373,11 +373,49 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleCallIntent(intent)
+        requestRequiredStoragePermissions()
         setContent {
             val settingsVm: SettingsViewModel = viewModel()
             val settingsState by settingsVm.settingsState.collectAsState()
             WhatsAppTheme(appTheme = settingsState.appTheme) {
                 VibeSyncApp(settingsVm = settingsVm)
+            }
+        }
+    }
+
+    private fun requestRequiredStoragePermissions() {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+            permissions.add(android.Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        permissions.add(android.Manifest.permission.RECORD_AUDIO)
+        permissions.add(android.Manifest.permission.CAMERA)
+
+        val ungranted = permissions.filter {
+            checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (ungranted.isNotEmpty()) {
+            requestPermissions(ungranted.toTypedArray(), 1001)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                try {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = android.net.Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    try {
+                        val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        startActivity(intent)
+                    } catch (_: Exception) {}
+                }
             }
         }
     }

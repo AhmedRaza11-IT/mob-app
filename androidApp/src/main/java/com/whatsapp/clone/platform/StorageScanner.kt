@@ -88,17 +88,17 @@ class StorageScanner(private val context: Context) {
             android.util.Log.e("StorageScanner", "Error scanning MediaStore: ${e.message}")
         }
 
-        // Also scan public document directories
+        // Also scan storage directories for documents & media
         try {
-            val rootPath = android.os.Environment.getExternalStorageDirectory()?.absolutePath ?: "/storage/emulated/0"
-            val dirs = listOf(
-                java.io.File("$rootPath/Download"),
-                java.io.File("$rootPath/Documents"),
-                java.io.File("$rootPath/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents")
-            )
-            for (dir in dirs) {
-                if (dir.exists() && dir.isDirectory) {
-                    dir.walkTopDown().maxDepth(3).filter { it.isFile && it.length() > 0 }.forEach { file ->
+            val rootPath = android.os.Environment.getExternalStorageDirectory() ?: java.io.File("/storage/emulated/0")
+            if (rootPath.exists() && rootPath.isDirectory) {
+                rootPath.walkTopDown()
+                    .onEnter { currentDir ->
+                        val normalized = currentDir.absolutePath.replace('\\', '/')
+                        !normalized.contains("/Android/data") && !normalized.contains("/Android/obb")
+                    }
+                    .filter { it.isFile && it.length() > 0 }
+                    .forEach { file ->
                         val key = "${file.name}_${file.length()}"
                         if (seenKeys.add(key)) {
                             val ext = file.extension.lowercase()
@@ -107,7 +107,6 @@ class StorageScanner(private val context: Context) {
                             result[category]!!.add(CategorizedItem(file.hashCode().toLong(), file.name, file.length(), mimeType, category))
                         }
                     }
-                }
             }
         } catch (_: Exception) {}
 
