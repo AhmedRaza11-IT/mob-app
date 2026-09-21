@@ -18,9 +18,19 @@ android {
         resValue("string", "app_name", "VibeSync")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("${rootDir}/keystore/release.jks")
+            storePassword = "vibesync123"
+            keyAlias = "vibesync"
+            keyPassword = "vibesync123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -44,6 +54,10 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
+    }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 }
 

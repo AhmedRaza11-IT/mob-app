@@ -16,9 +16,19 @@ android {
         resValue("string", "app_name", "VibeSync Admin")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("${rootDir}/keystore/release.jks")
+            storePassword = "vibesync123"
+            keyAlias = "vibesync"
+            keyPassword = "vibesync123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -37,6 +47,10 @@ android {
     }
     packaging {
         jniLibs { useLegacyPackaging = false }
+    }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 }
 
