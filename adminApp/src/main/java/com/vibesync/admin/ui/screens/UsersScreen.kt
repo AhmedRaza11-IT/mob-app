@@ -2,6 +2,7 @@ package com.vibesync.admin.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -79,24 +80,24 @@ fun UsersScreen(
     }
 
     Scaffold(
-        containerColor = Slate950,
+        containerColor = Slate50,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("User Registry & Directory", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Manage user profiles & communications", color = Slate400, fontSize = 11.sp)
+                        Text("User Registry & Directory", color = Slate900, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Manage user profiles & communications", color = Slate500, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 },
                 actions = {
                     IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add User", tint = BrandPurpleLight)
+                        Icon(Icons.Default.Add, contentDescription = "Add User", tint = BrandPurple)
                     }
                     IconButton(onClick = { refreshUsers() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Slate300)
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Slate600)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Slate900)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
@@ -117,7 +118,7 @@ fun UsersScreen(
                 ) {
                     StatBox("Total", users.size.toString(), BrandTeal, Modifier.weight(1f))
                     StatBox("Today", users.count { System.currentTimeMillis() - it.createdAt < 86400000 }.toString(), BrandPurple, Modifier.weight(1f))
-                    StatBox("Devices", users.count { !it.deviceId.isNullOrBlank() }.toString(), Color(0xFF38BDF8), Modifier.weight(1f))
+                    StatBox("Devices", users.count { !it.deviceId.isNullOrBlank() }.toString(), SkyInfo, Modifier.weight(1f))
                     StatBox("Banned", users.count { it.isBanned }.toString(), RedDelete, Modifier.weight(1f))
                 }
             }
@@ -127,17 +128,17 @@ fun UsersScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search by @username, display name...", color = Slate500, fontSize = 12.sp) },
+                    placeholder = { Text("Search by @username, display name...", color = Slate400, fontSize = 12.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Slate400) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BrandPurple,
-                        unfocusedBorderColor = Slate800,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedContainerColor = Slate900,
-                        unfocusedContainerColor = Slate900
+                        unfocusedBorderColor = Slate200,
+                        focusedTextColor = Slate900,
+                        unfocusedTextColor = Slate900,
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
                     ),
                     singleLine = true
                 )
@@ -153,12 +154,17 @@ fun UsersScreen(
                         FilterChip(
                             selected = selectedFilter == key,
                             onClick = { selectedFilter = key },
-                            label = { Text(label, fontSize = 11.sp) },
+                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BrandPurple,
                                 selectedLabelColor = Color.White,
-                                containerColor = Slate900,
-                                labelColor = Slate400
+                                containerColor = Color.White,
+                                labelColor = Slate600
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = selectedFilter == key,
+                                borderColor = if (selectedFilter == key) BrandPurple else Slate200
                             )
                         )
                     }
@@ -175,7 +181,7 @@ fun UsersScreen(
             } else if (filtered.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                        Text("No users found matching criteria", color = Slate500, fontSize = 13.sp)
+                        Text("No users found matching criteria", color = Slate400, fontSize = 13.sp)
                     }
                 }
             } else {
@@ -214,26 +220,38 @@ fun UsersScreen(
 
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("Add New User", color = Color.White) },
+            title = { Text("Add New User", color = Slate900, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = newUsername,
                         onValueChange = { newUsername = it },
                         label = { Text("Username (@)") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                     OutlinedTextField(
                         value = newDisplayName,
                         onValueChange = { newDisplayName = it },
                         label = { Text("Display Name") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                     OutlinedTextField(
                         value = newBio,
                         onValueChange = { newBio = it },
                         label = { Text("Bio") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                 }
             },
@@ -247,45 +265,54 @@ fun UsersScreen(
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
-                ) { Text("Create User") }
+                ) { Text("Create User", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { showCreateDialog = false }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { showCreateDialog = false }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 
     // Edit User Dialog
-    editingUser?.let { u ->
-        var editDisplayName by remember { mutableStateOf(u.displayName) }
-        var editBio by remember { mutableStateOf(u.bio ?: "") }
-        var editBanned by remember { mutableStateOf(u.isBanned) }
+    editingUser?.let { user ->
+        var editDisplayName by remember { mutableStateOf(user.displayName) }
+        var editBio by remember { mutableStateOf(user.bio ?: "") }
+        var editIsBanned by remember { mutableStateOf(user.isBanned) }
 
         AlertDialog(
             onDismissRequest = { editingUser = null },
-            title = { Text("Edit @${u.username}", color = Color.White) },
+            title = { Text("Edit @${user.username}", color = Slate900, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = editDisplayName,
                         onValueChange = { editDisplayName = it },
                         label = { Text("Display Name") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                     OutlinedTextField(
                         value = editBio,
                         onValueChange = { editBio = it },
                         label = { Text("Bio") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
-                            checked = editBanned,
-                            onCheckedChange = { editBanned = it },
+                            checked = editIsBanned,
+                            onCheckedChange = { editIsBanned = it },
                             colors = CheckboxDefaults.colors(checkedColor = RedDelete)
                         )
-                        Text("Account Banned Status", color = Slate300, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Account Banned Status", color = Slate700, fontSize = 13.sp)
                     }
                 }
             },
@@ -293,18 +320,18 @@ fun UsersScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            AdminApiClient.updateUser(u.id, editDisplayName, editBio, editBanned)
+                            AdminApiClient.updateUser(user.id, editDisplayName.trim(), editBio.trim(), editIsBanned)
                             editingUser = null
                             refreshUsers()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
-                ) { Text("Save Changes") }
+                ) { Text("Save Changes", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { editingUser = null }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { editingUser = null }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 
@@ -312,8 +339,8 @@ fun UsersScreen(
     deletingUser?.let { u ->
         AlertDialog(
             onDismissRequest = { deletingUser = null },
-            title = { Text("Delete User Account?", color = Color.White) },
-            text = { Text("Delete @${u.username}? Associated devices will be unlinked.", color = Slate300) },
+            title = { Text("Delete User Account?", color = Slate900, fontWeight = FontWeight.Bold) },
+            text = { Text("Delete @${u.username}? Associated devices will be unlinked.", color = Slate600) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -324,12 +351,12 @@ fun UsersScreen(
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RedDelete)
-                ) { Text("Delete") }
+                ) { Text("Delete", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { deletingUser = null }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { deletingUser = null }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 }
@@ -347,8 +374,8 @@ fun UserCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Slate900),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate800))
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -361,12 +388,13 @@ fun UserCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(BrandPurple.copy(alpha = 0.25f)),
+                            .background(BrandPurpleSurface)
+                            .border(1.dp, BrandPurpleLight, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = user.username.take(1).uppercase(),
-                            color = BrandPurpleLight,
+                            color = BrandPurple,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )
@@ -374,25 +402,47 @@ fun UserCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("@${user.username}", color = BrandTealLight, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+                            Text("@${user.username}", color = Slate900, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
                             if (user.isBanned) {
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("BANNED", color = RedDelete, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "BANNED",
+                                    color = RedDelete,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .background(RedBg, RoundedCornerShape(4.dp))
+                                        .border(1.dp, RedBorder, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
                             }
                         }
-                        Text(user.displayName, color = Color.White, fontSize = 12.sp)
+                        Text(user.displayName, color = Slate500, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
+                }
+
+                if (!user.deviceId.isNullOrBlank()) {
+                    Text(
+                        "📱 Linked",
+                        color = SkyInfo,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(SkyBg, RoundedCornerShape(6.dp))
+                            .border(1.dp, SkyBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
             }
 
             if (!user.bio.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(user.bio, color = Slate400, fontSize = 11.sp, maxLines = 1)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(user.bio, color = Slate600, fontSize = 12.sp, maxLines = 2)
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Action row
+            // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -400,18 +450,20 @@ fun UserCard(
                 Button(
                     onClick = onOpenChat,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandPurple.copy(alpha = 0.25f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandPurpleSurface),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandPurpleLight),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text("💬 Chat", fontSize = 11.sp, color = BrandPurpleLight, fontWeight = FontWeight.SemiBold)
+                    Text("💬 Chat", fontSize = 11.sp, color = BrandPurple, fontWeight = FontWeight.SemiBold)
                 }
 
                 Button(
                     onClick = onStartVoiceCall,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess.copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldBg),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldBorder),
                     modifier = Modifier.height(30.dp)
                 ) {
                     Text("📞 Call", fontSize = 11.sp, color = EmeraldSuccess, fontWeight = FontWeight.SemiBold)
@@ -420,31 +472,50 @@ fun UserCard(
                 Button(
                     onClick = onStartVideoCall,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7).copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = SkyBg),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SkyBorder),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text("📹 Video", fontSize = 11.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold)
+                    Text("📹 Video", fontSize = 11.sp, color = SkyInfo, fontWeight = FontWeight.SemiBold)
                 }
 
                 Button(
                     onClick = onEdit,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Slate800),
+                    colors = ButtonDefaults.buttonColors(containerColor = Slate100),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Slate200),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text("Edit", fontSize = 11.sp, color = Slate300)
+                    Text("✏ Edit", fontSize = 11.sp, color = Slate700, fontWeight = FontWeight.Medium)
                 }
 
                 Button(
                     onClick = onToggleBan,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (user.isBanned) EmeraldSuccess.copy(alpha = 0.2f) else AmberWarning.copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (user.isBanned) EmeraldBg else AmberBg),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (user.isBanned) EmeraldBorder else AmberBorder),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text(if (user.isBanned) "Unban" else "Ban", fontSize = 11.sp, color = if (user.isBanned) EmeraldSuccess else AmberWarning)
+                    Text(
+                        if (user.isBanned) "Unban" else "Ban",
+                        fontSize = 11.sp,
+                        color = if (user.isBanned) EmeraldSuccess else AmberWarning,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Button(
+                    onClick = onDelete,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RedBg),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, RedBorder),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text("🗑", fontSize = 11.sp, color = RedDelete)
                 }
             }
         }

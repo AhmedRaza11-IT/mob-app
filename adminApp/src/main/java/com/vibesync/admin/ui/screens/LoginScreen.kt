@@ -1,6 +1,7 @@
 package com.vibesync.admin.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -47,7 +48,7 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Slate950)
+            .background(Slate50)
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -56,8 +57,8 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .wrapContentHeight(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Slate900),
-            border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate800))
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200))
         ) {
             Column(
                 modifier = Modifier
@@ -69,7 +70,8 @@ fun LoginScreen(
                 Box(
                     modifier = Modifier
                         .size(60.dp)
-                        .background(BrandPurple.copy(alpha = 0.15f), RoundedCornerShape(16.dp)),
+                        .background(BrandPurpleSurface, RoundedCornerShape(16.dp))
+                        .border(1.dp, BrandPurpleLight, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -86,13 +88,14 @@ fun LoginScreen(
                     text = "VibeSync Admin",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Slate900
                 )
 
                 Text(
                     text = "Fleet Management & Remote Control",
                     fontSize = 12.sp,
-                    color = Slate400,
+                    color = Slate500,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 4.dp)
                 )
 
@@ -102,7 +105,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
-                    label = { Text("Server Host URL", color = Slate400, fontSize = 12.sp) },
+                    label = { Text("Server Host URL", color = Slate500, fontSize = 12.sp) },
                     leadingIcon = {
                         Icon(Icons.Default.Router, contentDescription = null, tint = Slate400)
                     },
@@ -110,11 +113,11 @@ fun LoginScreen(
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BrandPurple,
-                        unfocusedBorderColor = Slate700,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedContainerColor = Slate950,
-                        unfocusedContainerColor = Slate950
+                        unfocusedBorderColor = Slate200,
+                        focusedTextColor = Slate900,
+                        unfocusedTextColor = Slate900,
+                        focusedContainerColor = Slate50,
+                        unfocusedContainerColor = Slate50
                     ),
                     singleLine = true
                 )
@@ -131,22 +134,31 @@ fun LoginScreen(
                             serverUrl = AdminNetworkConfig.DEFAULT_ADB_URL
                             AdminNetworkConfig.setBaseUrl(serverUrl)
                         },
-                        label = { Text("ADB (127.0.0.1)", fontSize = 10.sp) },
+                        label = { Text("ADB (127.0.0.1)", fontSize = 10.sp, fontWeight = FontWeight.Medium) },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (serverUrl.contains("127.0.0.1")) BrandPurple.copy(alpha = 0.2f) else Slate800,
-                            labelColor = if (serverUrl.contains("127.0.0.1")) BrandPurpleLight else Slate300
+                            containerColor = if (serverUrl.contains("127.0.0.1")) BrandPurpleSurface else Slate100,
+                            labelColor = if (serverUrl.contains("127.0.0.1")) BrandPurple else Slate600
+                        ),
+                        border = AssistChipDefaults.assistChipBorder(
+                            enabled = true,
+                            borderColor = if (serverUrl.contains("127.0.0.1")) BrandPurpleLight else Slate200
                         ),
                         modifier = Modifier.weight(1f)
                     )
+
                     AssistChip(
                         onClick = {
                             serverUrl = AdminNetworkConfig.DEFAULT_WIFI_URL
                             AdminNetworkConfig.setBaseUrl(serverUrl)
                         },
-                        label = { Text("Wi-Fi (192.168.18.78)", fontSize = 10.sp) },
+                        label = { Text("Wi-Fi (192.168.18.78)", fontSize = 10.sp, fontWeight = FontWeight.Medium) },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (serverUrl.contains("192.168")) BrandPurple.copy(alpha = 0.2f) else Slate800,
-                            labelColor = if (serverUrl.contains("192.168")) BrandPurpleLight else Slate300
+                            containerColor = if (serverUrl.contains("192.168")) BrandPurpleSurface else Slate100,
+                            labelColor = if (serverUrl.contains("192.168")) BrandPurple else Slate600
+                        ),
+                        border = AssistChipDefaults.assistChipBorder(
+                            enabled = true,
+                            borderColor = if (serverUrl.contains("192.168")) BrandPurpleLight else Slate200
                         ),
                         modifier = Modifier.weight(1f)
                     )
@@ -158,7 +170,7 @@ fun LoginScreen(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Admin Master Password", color = Slate400, fontSize = 12.sp) },
+                    label = { Text("Admin Master Password", color = Slate500, fontSize = 12.sp) },
                     leadingIcon = {
                         Icon(Icons.Default.Lock, contentDescription = null, tint = Slate400)
                     },
@@ -168,11 +180,11 @@ fun LoginScreen(
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BrandPurple,
-                        unfocusedBorderColor = Slate700,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedContainerColor = Slate950,
-                        unfocusedContainerColor = Slate950
+                        unfocusedBorderColor = Slate200,
+                        focusedTextColor = Slate900,
+                        unfocusedTextColor = Slate900,
+                        focusedContainerColor = Slate50,
+                        unfocusedContainerColor = Slate50
                     ),
                     singleLine = true
                 )
@@ -182,7 +194,8 @@ fun LoginScreen(
                     Text(
                         text = errorMessage ?: "",
                         color = RedDelete,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
 
@@ -233,14 +246,26 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = hostDetectStatus,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = Slate500
-                )
+                // Status indicator
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(EmeraldSuccess, RoundedCornerShape(4.dp))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = hostDetectStatus,
+                        fontSize = 11.sp,
+                        color = Slate500,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
         }
     }

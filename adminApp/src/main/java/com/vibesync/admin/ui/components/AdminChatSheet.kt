@@ -2,6 +2,7 @@ package com.vibesync.admin.ui.components
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,14 +66,14 @@ fun AdminChatSheet(
 
     ModalBottomSheet(
         onDismissRequest = onClose,
-        containerColor = Slate900,
+        containerColor = Color.White,
         dragHandle = {
             Box(
                 modifier = Modifier
                     .padding(vertical = 10.dp)
                     .width(40.dp)
                     .height(4.dp)
-                    .background(Slate700, RoundedCornerShape(2.dp))
+                    .background(Slate300, RoundedCornerShape(2.dp))
             )
         }
     ) {
@@ -94,12 +95,13 @@ fun AdminChatSheet(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(BrandPurple.copy(alpha = 0.25f)),
+                            .background(BrandPurpleSurface)
+                            .border(1.dp, BrandPurpleLight, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = targetUsername.take(1).uppercase(),
-                            color = BrandPurpleLight,
+                            color = BrandPurple,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
@@ -108,15 +110,16 @@ fun AdminChatSheet(
                     Column {
                         Text(
                             text = targetDisplayName,
-                            color = Color.White,
+                            color = Slate900,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )
                         Text(
                             text = "@$targetUsername",
-                            color = BrandTealLight,
+                            color = BrandPurple,
                             fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -126,15 +129,15 @@ fun AdminChatSheet(
                         Icon(Icons.Default.Phone, contentDescription = "Voice Call", tint = EmeraldSuccess)
                     }
                     IconButton(onClick = { onStartCall(true) }) {
-                        Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = Color(0xFF38BDF8))
+                        Icon(Icons.Default.Videocam, contentDescription = "Video Call", tint = SkyInfo)
                     }
                     IconButton(onClick = onClose) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate400)
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate500)
                     }
                 }
             }
 
-            Divider(color = Slate800)
+            HorizontalDivider(color = Slate100)
 
             // Message Bubble History
             LazyColumn(
@@ -142,6 +145,7 @@ fun AdminChatSheet(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .background(Slate50)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
@@ -156,8 +160,9 @@ fun AdminChatSheet(
                         ) {
                             Text(
                                 text = "No messages yet. Send a direct message to @$targetUsername.",
-                                color = Slate500,
-                                fontSize = 12.sp
+                                color = Slate400,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -169,16 +174,17 @@ fun AdminChatSheet(
                             contentAlignment = if (isAdmin) Alignment.CenterEnd else Alignment.CenterStart
                         ) {
                             Card(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isAdmin) BrandPurple else Slate800
+                                    containerColor = if (isAdmin) BrandPurple else Color.White
                                 ),
+                                border = if (isAdmin) null else CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200)),
                                 modifier = Modifier.widthIn(max = 280.dp)
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(
                                         text = msg.content,
-                                        color = Color.White,
+                                        color = if (isAdmin) Color.White else Slate900,
                                         fontSize = 13.sp
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -188,9 +194,10 @@ fun AdminChatSheet(
                                     ) {
                                         Text(
                                             text = if (isAdmin) "Admin • ${msg.status}" else "@$targetUsername",
-                                            color = if (isAdmin) BrandPurpleLight.copy(alpha = 0.8f) else Slate400,
+                                            color = if (isAdmin) BrandPurpleLight.copy(alpha = 0.9f) else Slate400,
                                             fontSize = 9.sp,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Medium
                                         )
                                     }
                                 }
@@ -200,29 +207,29 @@ fun AdminChatSheet(
                 }
             }
 
-            Divider(color = Slate800)
+            HorizontalDivider(color = Slate200)
 
             // Bottom Input Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Slate950)
+                    .background(Color.White)
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
                     value = inputMessage,
                     onValueChange = { inputMessage = it },
-                    placeholder = { Text("Type message as Administrator...", color = Slate500, fontSize = 13.sp) },
+                    placeholder = { Text("Type message as Administrator...", color = Slate400, fontSize = 13.sp) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(20.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BrandPurple,
-                        unfocusedBorderColor = Slate800,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedContainerColor = Slate900,
-                        unfocusedContainerColor = Slate900
+                        unfocusedBorderColor = Slate200,
+                        focusedTextColor = Slate900,
+                        unfocusedTextColor = Slate900,
+                        focusedContainerColor = Slate50,
+                        unfocusedContainerColor = Slate50
                     ),
                     maxLines = 3
                 )

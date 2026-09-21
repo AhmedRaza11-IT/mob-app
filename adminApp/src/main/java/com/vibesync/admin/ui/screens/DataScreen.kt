@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -76,21 +77,21 @@ fun DataScreen() {
     }
 
     Scaffold(
-        containerColor = Slate950,
+        containerColor = Slate50,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Data & Storage Telemetry", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("File repository & remote storage control", color = Slate400, fontSize = 11.sp)
+                        Text("Data & Storage Telemetry", color = Slate900, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("File repository & remote storage control", color = Slate500, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 },
                 actions = {
                     IconButton(onClick = { refreshData() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Slate300)
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Slate600)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Slate900)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
@@ -110,7 +111,7 @@ fun DataScreen() {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val mbText = summary?.let { String.format("%.2f MB", it.totalStorageMb) } ?: "0.00 MB"
-                    StatBox("Storage", mbText, Color.White, Modifier.weight(1f))
+                    StatBox("Storage", mbText, Slate900, Modifier.weight(1f))
                     StatBox("Total Files", (summary?.totalItems ?: 0).toString(), BrandPurple, Modifier.weight(1f))
                     StatBox("Devices", (summary?.deviceCount ?: 0).toString(), BrandTeal, Modifier.weight(1f))
                 }
@@ -121,17 +122,17 @@ fun DataScreen() {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search files, user, or device ID...", color = Slate500, fontSize = 12.sp) },
+                    placeholder = { Text("Search files, user, or device ID...", color = Slate400, fontSize = 12.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Slate400) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BrandPurple,
-                        unfocusedBorderColor = Slate800,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedContainerColor = Slate900,
-                        unfocusedContainerColor = Slate900
+                        unfocusedBorderColor = Slate200,
+                        focusedTextColor = Slate900,
+                        unfocusedTextColor = Slate900,
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
                     ),
                     singleLine = true
                 )
@@ -147,12 +148,17 @@ fun DataScreen() {
                         FilterChip(
                             selected = selectedCategory == cat,
                             onClick = { selectedCategory = cat },
-                            label = { Text(cat, fontSize = 11.sp) },
+                            label = { Text(cat, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = BrandPurple,
                                 selectedLabelColor = Color.White,
-                                containerColor = Slate900,
-                                labelColor = Slate400
+                                containerColor = Color.White,
+                                labelColor = Slate600
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = selectedCategory == cat,
+                                borderColor = if (selectedCategory == cat) BrandPurple else Slate200
                             )
                         )
                     }
@@ -169,7 +175,7 @@ fun DataScreen() {
             } else if (filtered.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                        Text("No files found in repository", color = Slate500, fontSize = 13.sp)
+                        Text("No files found in repository", color = Slate400, fontSize = 13.sp)
                     }
                 }
             } else {
@@ -214,8 +220,8 @@ fun FileCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Slate900),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate800))
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200))
     ) {
         Row(
             modifier = Modifier
@@ -228,17 +234,19 @@ fun FileCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = file.name.split('.').lastOrNull()?.uppercase() ?: "FILE",
-                        color = Slate300,
+                        color = Slate600,
                         fontSize = 9.sp,
                         fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier
-                            .background(Slate800, RoundedCornerShape(4.dp))
+                            .background(Slate100, RoundedCornerShape(4.dp))
+                            .border(1.dp, Slate200, RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = file.name,
-                        color = Color.White,
+                        color = Slate900,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         maxLines = 1
@@ -247,14 +255,15 @@ fun FileCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "@${file.username} • ${file.sizeFormatted} • ${file.category}",
-                    color = Slate400,
-                    fontSize = 11.sp
+                    color = Slate500,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = onDownload) {
-                    Icon(Icons.Default.Download, contentDescription = "Download", tint = BrandPurpleLight)
+                    Icon(Icons.Default.Download, contentDescription = "Download", tint = BrandPurple)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = RedDelete)

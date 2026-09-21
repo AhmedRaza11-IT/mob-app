@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.NavHost
@@ -65,51 +66,51 @@ fun AdminAppRoot() {
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
-            containerColor = Slate950,
+            containerColor = Slate50,
             bottomBar = {
                 if (showBottomBar) {
                     NavigationBar(
-                        containerColor = Slate900,
-                        contentColor = Color.White,
-                        tonalElevation = 8.dp
+                        containerColor = Color.White,
+                        contentColor = Slate900,
+                        tonalElevation = 2.dp
                     ) {
                         NavigationBarItem(
                             icon = { Icon(Icons.Default.PhoneAndroid, contentDescription = "Devices") },
-                            label = { Text("Devices", fontSize = 11.sp) },
+                            label = { Text("Devices", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             selected = currentRoute == "devices",
                             onClick = { navController.navigate("devices") { launchSingleTop = true } },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = BrandPurpleLight,
-                                selectedTextColor = BrandPurpleLight,
-                                unselectedIconColor = Slate500,
+                                selectedIconColor = BrandPurple,
+                                selectedTextColor = BrandPurple,
+                                unselectedIconColor = Slate400,
                                 unselectedTextColor = Slate500,
-                                indicatorColor = BrandPurple.copy(alpha = 0.25f)
+                                indicatorColor = BrandPurpleLight
                             )
                         )
                         NavigationBarItem(
                             icon = { Icon(Icons.Default.Group, contentDescription = "Users") },
-                            label = { Text("Users", fontSize = 11.sp) },
+                            label = { Text("Users", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             selected = currentRoute == "users",
                             onClick = { navController.navigate("users") { launchSingleTop = true } },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = BrandPurpleLight,
-                                selectedTextColor = BrandPurpleLight,
-                                unselectedIconColor = Slate500,
+                                selectedIconColor = BrandPurple,
+                                selectedTextColor = BrandPurple,
+                                unselectedIconColor = Slate400,
                                 unselectedTextColor = Slate500,
-                                indicatorColor = BrandPurple.copy(alpha = 0.25f)
+                                indicatorColor = BrandPurpleLight
                             )
                         )
                         NavigationBarItem(
                             icon = { Icon(Icons.Default.Storage, contentDescription = "Data") },
-                            label = { Text("Data", fontSize = 11.sp) },
+                            label = { Text("Data", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             selected = currentRoute == "data",
                             onClick = { navController.navigate("data") { launchSingleTop = true } },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = BrandPurpleLight,
-                                selectedTextColor = BrandPurpleLight,
-                                unselectedIconColor = Slate500,
+                                selectedIconColor = BrandPurple,
+                                selectedTextColor = BrandPurple,
+                                unselectedIconColor = Slate400,
                                 unselectedTextColor = Slate500,
-                                indicatorColor = BrandPurple.copy(alpha = 0.25f)
+                                indicatorColor = BrandPurpleLight
                             )
                         )
                     }

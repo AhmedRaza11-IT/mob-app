@@ -91,21 +91,21 @@ fun DevicesScreen(
     val blockedCount = devices.count { it.isBlocked }
 
     Scaffold(
-        containerColor = Slate950,
+        containerColor = Slate50,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Device Fleet Management", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Remote identification, policies & kill switch", color = Slate400, fontSize = 11.sp)
+                        Text("Device Fleet Management", color = Slate900, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Remote identification, policies & kill switch", color = Slate500, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 },
                 actions = {
                     IconButton(onClick = { refreshAll() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Slate300)
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Slate600)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Slate900)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
@@ -123,8 +123,8 @@ fun DevicesScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Slate900),
-                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate800))
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -136,15 +136,16 @@ fun DevicesScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(36.dp)
-                                        .background(BrandPurple.copy(alpha = 0.2f), RoundedCornerShape(10.dp)),
+                                        .background(BrandPurpleSurface, RoundedCornerShape(10.dp))
+                                        .border(1.dp, BrandPurpleLight, RoundedCornerShape(10.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text("🛡️", fontSize = 18.sp)
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
-                                    Text("Enterprise Policy & OTA", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text("MDM Live Enforcement", color = BrandPurpleLight, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                    Text("Enterprise Policy & OTA", color = Slate900, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("MDM Live Enforcement", color = BrandPurple, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
                                 }
                             }
 
@@ -164,7 +165,7 @@ fun DevicesScreen(
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                 modifier = Modifier.height(34.dp)
                             ) {
-                                Text("🚀 Broadcast OTA", fontSize = 11.sp, color = Color.White)
+                                Text("🚀 Broadcast OTA", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
                             }
                         }
 
@@ -187,7 +188,7 @@ fun DevicesScreen(
                                 }
                             )
 
-                            Divider(color = Slate800, modifier = Modifier.padding(vertical = 8.dp))
+                            HorizontalDivider(color = Slate100, modifier = Modifier.padding(vertical = 8.dp))
 
                             PolicyToggleRow(
                                 title = "📞 Calling Enabled",
@@ -203,7 +204,7 @@ fun DevicesScreen(
                                 }
                             )
 
-                            Divider(color = Slate800, modifier = Modifier.padding(vertical = 8.dp))
+                            HorizontalDivider(color = Slate100, modifier = Modifier.padding(vertical = 8.dp))
 
                             PolicyToggleRow(
                                 title = "🚧 Maintenance Mode",
@@ -232,7 +233,7 @@ fun DevicesScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StatBox(label = "Total", value = devices.size.toString(), color = BrandPurple, modifier = Modifier.weight(1f))
-                    StatBox(label = "Active", value = activeCount.toString(), color = BrandTeal, modifier = Modifier.weight(1f))
+                    StatBox(label = "Active", value = activeCount.toString(), color = EmeraldSuccess, modifier = Modifier.weight(1f))
                     StatBox(label = "Unassigned", value = unassignedCount.toString(), color = AmberWarning, modifier = Modifier.weight(1f))
                     StatBox(label = "Blocked", value = blockedCount.toString(), color = RedDelete, modifier = Modifier.weight(1f))
                 }
@@ -243,17 +244,17 @@ fun DevicesScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search by ANDROID_ID, model, username...", color = Slate500, fontSize = 12.sp) },
+                    placeholder = { Text("Search by ANDROID_ID, model, username...", color = Slate400, fontSize = 12.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Slate400) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = BrandPurple,
-                        unfocusedBorderColor = Slate800,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedContainerColor = Slate900,
-                        unfocusedContainerColor = Slate900
+                        unfocusedBorderColor = Slate200,
+                        focusedTextColor = Slate900,
+                        unfocusedTextColor = Slate900,
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
                     ),
                     singleLine = true
                 )
@@ -269,7 +270,7 @@ fun DevicesScreen(
             } else if (filtered.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                        Text("No devices match your criteria", color = Slate500, fontSize = 13.sp)
+                        Text("No devices match your criteria", color = Slate400, fontSize = 13.sp)
                     }
                 }
             } else {
@@ -309,26 +310,38 @@ fun DevicesScreen(
 
         AlertDialog(
             onDismissRequest = { editingDevice = null },
-            title = { Text("Edit Device Details", color = Color.White) },
+            title = { Text("Edit Device Details", color = Slate900, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = editModel,
                         onValueChange = { editModel = it },
                         label = { Text("Model") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                     OutlinedTextField(
                         value = editUsername,
                         onValueChange = { editUsername = it },
                         label = { Text("Assigned Username") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                     OutlinedTextField(
                         value = editEmail,
                         onValueChange = { editEmail = it },
                         label = { Text("Email") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Slate900, unfocusedTextColor = Slate900,
+                            focusedBorderColor = BrandPurple, unfocusedBorderColor = Slate200,
+                            focusedContainerColor = Slate50, unfocusedContainerColor = Slate50
+                        )
                     )
                 }
             },
@@ -342,12 +355,12 @@ fun DevicesScreen(
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
-                ) { Text("Save") }
+                ) { Text("Save Changes", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { editingDevice = null }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { editingDevice = null }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 
@@ -356,29 +369,38 @@ fun DevicesScreen(
         AlertDialog(
             onDismissRequest = { sanitizingDevice = null },
             icon = { Text("🧹", fontSize = 28.sp) },
-            title = { Text("Sanitize Device Data?", color = Color.White) },
+            title = { Text("Sanitize Device Data?", color = Slate900, fontWeight = FontWeight.Bold) },
             text = {
-                Text(
-                    "This will remotely wipe local SQLite database, cache, media and session tokens on ${dev.deviceModel}.",
-                    color = Slate300, fontSize = 13.sp
-                )
+                Column {
+                    Text("Remotely wipes local databases, cached media, tokens, and active session data on ${dev.deviceModel}.", color = Slate600, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AmberBg, RoundedCornerShape(8.dp))
+                            .border(1.dp, AmberBorder, RoundedCornerShape(8.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text("• Clears Room SQLite databases\n• Purges media & downloads\n• Terminates sessions", color = AmberWarning, fontSize = 11.sp)
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         scope.launch {
                             AdminApiClient.sanitizeDevice(dev.deviceId)
-                            Toast.makeText(context, "Sanitization dispatched!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Sanitize command dispatched!", Toast.LENGTH_SHORT).show()
                             sanitizingDevice = null
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AmberWarning)
-                ) { Text("Execute Sanitize", color = Color.Black) }
+                ) { Text("Execute Sanitize", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { sanitizingDevice = null }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { sanitizingDevice = null }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 
@@ -387,12 +409,14 @@ fun DevicesScreen(
         AlertDialog(
             onDismissRequest = { deprovisioningDevice = null },
             icon = { Text("⚡", fontSize = 28.sp) },
-            title = { Text("Remote De-provision & Uninstall?", color = Color.White) },
+            title = { Text("Remote De-provision & Uninstall?", color = Slate900, fontWeight = FontWeight.Bold) },
             text = {
-                Text(
-                    "1. Sanitizes all local app databases & credentials\n2. Invokes Android package uninstall prompt\n3. Terminates the app process immediately on ${dev.deviceModel}.",
-                    color = Slate300, fontSize = 13.sp
-                )
+                Column {
+                    Text(
+                        "1. Sanitizes all local app databases & credentials\n2. Invokes Android package uninstall prompt\n3. Terminates the app process immediately on ${dev.deviceModel}.",
+                        color = Slate600, fontSize = 13.sp
+                    )
+                }
             },
             confirmButton = {
                 Button(
@@ -407,9 +431,9 @@ fun DevicesScreen(
                 ) { Text("Trigger Kill Switch", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { deprovisioningDevice = null }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { deprovisioningDevice = null }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 
@@ -417,8 +441,8 @@ fun DevicesScreen(
     deletingDevice?.let { dev ->
         AlertDialog(
             onDismissRequest = { deletingDevice = null },
-            title = { Text("Delete Device Record?", color = Color.White) },
-            text = { Text("Permanently delete record for ${dev.deviceModel}?", color = Slate300) },
+            title = { Text("Delete Device Record?", color = Slate900, fontWeight = FontWeight.Bold) },
+            text = { Text("Permanently delete record for ${dev.deviceModel}?", color = Slate600) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -429,12 +453,12 @@ fun DevicesScreen(
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RedDelete)
-                ) { Text("Delete") }
+                ) { Text("Delete", color = Color.White) }
             },
             dismissButton = {
-                TextButton(onClick = { deletingDevice = null }) { Text("Cancel", color = Slate400) }
+                TextButton(onClick = { deletingDevice = null }) { Text("Cancel", color = Slate500) }
             },
-            containerColor = Slate900
+            containerColor = Color.White
         )
     }
 }
@@ -452,8 +476,8 @@ fun PolicyToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(subtitle, color = Slate400, fontSize = 11.sp)
+            Text(title, color = Slate900, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(subtitle, color = Slate500, fontSize = 11.sp)
         }
         Switch(
             checked = isChecked,
@@ -461,8 +485,8 @@ fun PolicyToggleRow(
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = BrandPurple,
-                uncheckedThumbColor = Slate400,
-                uncheckedTrackColor = Slate800
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Slate300
             )
         )
     }
@@ -473,15 +497,15 @@ fun StatBox(label: String, value: String, color: Color, modifier: Modifier = Mod
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Slate900),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate800))
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200))
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
-            Text(label, fontSize = 10.sp, color = Slate400)
+            Text(label, fontSize = 10.sp, color = Slate500, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -504,8 +528,8 @@ fun DeviceCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Slate900),
-        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate800))
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Slate200))
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             // Header Row: Model + Status Badge
@@ -523,14 +547,14 @@ fun DeviceCard(
                                 when {
                                     device.isBlocked -> RedDelete
                                     isOnline -> EmeraldSuccess
-                                    else -> Slate600
+                                    else -> Slate400
                                 }
                             )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = device.deviceModel,
-                        color = Color.White,
+                        color = Slate900,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
@@ -543,17 +567,19 @@ fun DeviceCard(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .background(RedDelete.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                            .background(RedBg, RoundedCornerShape(6.dp))
+                            .border(1.dp, RedBorder, RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 } else if (isOnline) {
                     Text(
-                        "● Active",
+                        "✓ Active",
                         color = EmeraldSuccess,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .background(EmeraldSuccess.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                            .background(EmeraldBg, RoundedCornerShape(6.dp))
+                            .border(1.dp, EmeraldBorder, RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -568,7 +594,7 @@ fun DeviceCard(
             ) {
                 Text(
                     text = if (isUnassigned) "⚠ Unassigned" else "@${device.username}",
-                    color = if (isUnassigned) AmberWarning else BrandTealLight,
+                    color = if (isUnassigned) AmberWarning else BrandPurple,
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.SemiBold
@@ -576,7 +602,7 @@ fun DeviceCard(
 
                 Text(
                     text = device.deviceId.take(14) + "...",
-                    color = Slate500,
+                    color = Slate400,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
@@ -593,18 +619,20 @@ fun DeviceCard(
                     Button(
                         onClick = onOpenChat,
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPurple.copy(alpha = 0.25f)),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandPurpleSurface),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandPurpleLight),
                         modifier = Modifier.height(30.dp)
                     ) {
-                        Text("💬 Chat", fontSize = 11.sp, color = BrandPurpleLight, fontWeight = FontWeight.SemiBold)
+                        Text("💬 Chat", fontSize = 11.sp, color = BrandPurple, fontWeight = FontWeight.SemiBold)
                     }
 
                     Button(
                         onClick = onStartVoiceCall,
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess.copy(alpha = 0.2f)),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldBg),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldBorder),
                         modifier = Modifier.height(30.dp)
                     ) {
                         Text("📞 Call", fontSize = 11.sp, color = EmeraldSuccess, fontWeight = FontWeight.SemiBold)
@@ -613,42 +641,46 @@ fun DeviceCard(
                     Button(
                         onClick = onStartVideoCall,
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7).copy(alpha = 0.2f)),
+                        colors = ButtonDefaults.buttonColors(containerColor = SkyBg),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SkyBorder),
                         modifier = Modifier.height(30.dp)
                     ) {
-                        Text("📹 Video", fontSize = 11.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold)
+                        Text("📹 Video", fontSize = 11.sp, color = SkyInfo, fontWeight = FontWeight.SemiBold)
                     }
                 }
 
                 Button(
                     onClick = onEdit,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Slate800),
+                    colors = ButtonDefaults.buttonColors(containerColor = Slate100),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Slate200),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text("✏ Edit", fontSize = 11.sp, color = Slate300)
+                    Text("✏ Edit", fontSize = 11.sp, color = Slate700, fontWeight = FontWeight.Medium)
                 }
 
                 Button(
                     onClick = onSanitize,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AmberWarning.copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = AmberBg),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AmberBorder),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text("🧹 Nuke", fontSize = 11.sp, color = AmberWarning)
+                    Text("🧹 Nuke", fontSize = 11.sp, color = AmberWarning, fontWeight = FontWeight.Medium)
                 }
 
                 Button(
                     onClick = onDeprovision,
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RoseDanger.copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = RoseBg),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, RoseBorder),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text("⚡ Kill", fontSize = 11.sp, color = RoseDanger)
+                    Text("⚡ Kill", fontSize = 11.sp, color = RoseDanger, fontWeight = FontWeight.Medium)
                 }
             }
         }

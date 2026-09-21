@@ -3,6 +3,7 @@ package com.vibesync.admin.ui.components
 import android.view.SurfaceView
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -126,7 +127,7 @@ fun AdminCallScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Slate950)
+            .background(if (isVideo) Slate950 else Slate50)
     ) {
         // Video Views if in video call
         if (isVideo) {
@@ -148,6 +149,7 @@ fun AdminCallScreen(
                     .size(width = 110.dp, height = 160.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Slate900)
+                    .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
             ) {
                 AndroidView(
                     factory = { ctx ->
@@ -164,37 +166,38 @@ fun AdminCallScreen(
         // Voice Call or Overlay Info
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 80.dp),
+                .fillMaxWidth()
+                .padding(top = if (isVideo) 60.dp else 100.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (!isVideo) {
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
+                        .size(110.dp)
                         .clip(CircleShape)
-                        .background(BrandPurple.copy(alpha = 0.25f)),
+                        .background(BrandPurpleSurface)
+                        .border(2.dp, BrandPurpleLight, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = targetUsername.take(1).uppercase(),
-                        color = BrandPurpleLight,
+                        color = BrandPurple,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 42.sp
+                        fontSize = 44.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
 
             Text(
-                text = targetUsername,
-                color = Color.White,
-                fontSize = 22.sp,
+                text = "@$targetUsername",
+                color = if (isVideo) Color.White else Slate900,
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
                 text = if (isConnected) {
@@ -204,7 +207,7 @@ fun AdminCallScreen(
                 } else {
                     callStatus
                 },
-                color = if (isConnected) EmeraldSuccess else Slate400,
+                color = if (isConnected) EmeraldSuccess else if (isVideo) Slate300 else Slate500,
                 fontSize = 14.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.SemiBold
@@ -216,7 +219,7 @@ fun AdminCallScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 50.dp),
+                .padding(bottom = 50.dp, start = 20.dp, end = 20.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -228,12 +231,13 @@ fun AdminCallScreen(
                 },
                 modifier = Modifier
                     .size(56.dp)
-                    .background(if (isMuted) RedDelete.copy(alpha = 0.2f) else Slate800, CircleShape)
+                    .background(if (isMuted) RedBg else if (isVideo) Color.White.copy(alpha = 0.2f) else Slate100, CircleShape)
+                    .border(1.dp, if (isMuted) RedBorder else if (isVideo) Color.White.copy(alpha = 0.3f) else Slate200, CircleShape)
             ) {
                 Icon(
                     imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                     contentDescription = "Mute",
-                    tint = if (isMuted) RedDelete else Color.White,
+                    tint = if (isMuted) RedDelete else if (isVideo) Color.White else Slate700,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -269,7 +273,8 @@ fun AdminCallScreen(
                     },
                     modifier = Modifier
                         .size(56.dp)
-                        .background(if (isVideoDisabled) RedDelete.copy(alpha = 0.2f) else Slate800, CircleShape)
+                        .background(if (isVideoDisabled) RedBg else Color.White.copy(alpha = 0.2f), CircleShape)
+                        .border(1.dp, if (isVideoDisabled) RedBorder else Color.White.copy(alpha = 0.3f), CircleShape)
                 ) {
                     Icon(
                         imageVector = if (isVideoDisabled) Icons.Default.VideocamOff else Icons.Default.Videocam,
