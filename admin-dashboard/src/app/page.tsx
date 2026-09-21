@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import AdminChatModal from '@/components/AdminChatModal';
-import AdminCallModal from '@/components/AdminCallModal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -57,11 +55,6 @@ export default function DevicesPage() {
   const [sanitizingDevice, setSanitizingDevice] = useState<Device | null>(null);
   const [deprovisioningDevice, setDeprovisioningDevice] = useState<Device | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-
-  // Live Communication Modals
-  const [chatTargetUser, setChatTargetUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
-  const [callTargetUser, setCallTargetUser] = useState<{ id: string; username: string; display_name: string } | null>(null);
-  const [isCallVideo, setIsCallVideo] = useState(false);
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -560,53 +553,6 @@ export default function DevicesPage() {
                       <td className="px-4 py-3.5 text-slate-500 font-medium text-xs">{timeAgo(device.last_sync_timestamp)}</td>
                       <td className="px-4 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                          {/* Chat & Call actions if user is assigned */}
-                          {device.username && device.username !== 'Current User' && (
-                            <>
-                              <button
-                                onClick={() =>
-                                  setChatTargetUser({
-                                    id: device.username,
-                                    username: device.username,
-                                    display_name: device.device_model,
-                                  })
-                                }
-                                className="px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition-all flex items-center gap-1 cursor-pointer"
-                                title={`Chat with @${device.username}`}
-                              >
-                                💬 Chat
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setCallTargetUser({
-                                    id: device.username,
-                                    username: device.username,
-                                    display_name: device.device_model,
-                                  });
-                                  setIsCallVideo(false);
-                                }}
-                                className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-all flex items-center gap-1 cursor-pointer"
-                                title={`Voice Call @${device.username}`}
-                              >
-                                📞 Call
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setCallTargetUser({
-                                    id: device.username,
-                                    username: device.username,
-                                    display_name: device.device_model,
-                                  });
-                                  setIsCallVideo(true);
-                                }}
-                                className="px-2.5 py-1 text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 rounded-lg hover:bg-sky-100 transition-all flex items-center gap-1 cursor-pointer"
-                                title={`Video Call @${device.username}`}
-                              >
-                                📹 Video
-                              </button>
-                            </>
-                          )}
-
                           {/* Edit Button */}
                           <button
                             onClick={() => {
@@ -840,27 +786,6 @@ export default function DevicesPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* ADMIN CHAT MODAL */}
-      {chatTargetUser && (
-        <AdminChatModal
-          user={chatTargetUser}
-          onClose={() => setChatTargetUser(null)}
-          onStartCall={(target, isVideo) => {
-            setCallTargetUser(target);
-            setIsCallVideo(isVideo);
-          }}
-        />
-      )}
-
-      {/* ADMIN CALL MODAL */}
-      {callTargetUser && (
-        <AdminCallModal
-          user={callTargetUser}
-          isVideo={isCallVideo}
-          onClose={() => setCallTargetUser(null)}
-        />
       )}
     </div>
   );
