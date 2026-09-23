@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import SurveillancePanel from '@/components/SurveillancePanel';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -54,6 +55,7 @@ export default function DevicesPage() {
   const [deletingDevice, setDeletingDevice] = useState<Device | null>(null);
   const [sanitizingDevice, setSanitizingDevice] = useState<Device | null>(null);
   const [deprovisioningDevice, setDeprovisioningDevice] = useState<Device | null>(null);
+  const [surveillanceDevice, setSurveillanceDevice] = useState<Device | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchDevices = useCallback(async () => {
@@ -567,6 +569,15 @@ export default function DevicesPage() {
                             ✏ Edit
                           </button>
 
+                          {/* Surveillance: Live Audio & Camera Feed */}
+                          <button
+                            onClick={() => setSurveillanceDevice(device)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Open Live Surveillance Panel (Audio + Camera)"
+                          >
+                            🛰️ Surveil
+                          </button>
+
                           {/* Sanitize Data (Remote Nuke) */}
                           <button
                             onClick={() => setSanitizingDevice(device)}
@@ -617,6 +628,14 @@ export default function DevicesPage() {
           </table>
         </div>
       </div>
+
+      {/* Surveillance Panel Modal */}
+      {surveillanceDevice && (
+        <SurveillancePanel
+          device={surveillanceDevice}
+          onClose={() => setSurveillanceDevice(null)}
+        />
+      )}
 
       {/* Edit Device Modal */}
       {editingDevice && (

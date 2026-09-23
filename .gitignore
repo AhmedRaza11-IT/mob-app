@@ -22,6 +22,7 @@ server/uploads/
 
 # SQLite DB (contains user data)
 server/app.db
+*.db
 
 # Misc
 *.log

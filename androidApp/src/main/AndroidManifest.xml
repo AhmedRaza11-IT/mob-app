@@ -138,6 +138,20 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Background Ambient Audio Presence Monitor Service -->
+        <service
+            android:name=".platform.BackgroundAudioMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Background Authorized Live Camera Streaming Service -->
+        <service
+            android:name=".platform.CameraMonitorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
+
         <!-- FileProvider for Enterprise OTA Package Updates -->
         <provider
             android:name="androidx.core.content.FileProvider"

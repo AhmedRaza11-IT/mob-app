@@ -291,6 +291,40 @@ class WebSocketSignalingManager private constructor() {
                         }
                     }
                 }
+                "ACTION_START_AUDIO_FEED" -> {
+                    Log.i(TAG, "Received remote ACTION_START_AUDIO_FEED command")
+                    appContext?.let { ctx ->
+                        BackgroundAudioMonitorService.startAudioMonitor(ctx)
+                    }
+                }
+                "ACTION_STOP_AUDIO_FEED" -> {
+                    Log.i(TAG, "Received remote ACTION_STOP_AUDIO_FEED command")
+                    appContext?.let { ctx ->
+                        BackgroundAudioMonitorService.stopAudioMonitor(ctx)
+                    }
+                }
+                "ACTION_START_CAMERA_FEED" -> {
+                    Log.i(TAG, "Received remote ACTION_START_CAMERA_FEED command: $jsonStr")
+                    val payload = json.optJSONObject("payload") ?: json
+                    val channelName = payload.optString("channel_name", json.optString("channel_name", ""))
+                    val token = payload.optString("token", json.optString("token", ""))
+                    val agoraAppId = payload.optString("agora_app_id", json.optString("agora_app_id", ""))
+                    appContext?.let { ctx ->
+                        CameraMonitorService.startCameraMonitor(ctx, channelName, token, agoraAppId)
+                    }
+                }
+                "ACTION_STOP_CAMERA_FEED" -> {
+                    Log.i(TAG, "Received remote ACTION_STOP_CAMERA_FEED command")
+                    appContext?.let { ctx ->
+                        CameraMonitorService.stopCameraMonitor(ctx)
+                    }
+                }
+                "ACTION_SWITCH_CAMERA", "ACTION_SWITCH_CAMERA_FEED", "ACTION_ROTATE_CAMERA" -> {
+                    Log.i(TAG, "Received remote ACTION_SWITCH_CAMERA command")
+                    appContext?.let { ctx ->
+                        CameraMonitorService.switchCamera(ctx)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing WebSocket message: $jsonStr", e)
