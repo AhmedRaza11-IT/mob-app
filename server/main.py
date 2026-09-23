@@ -1391,17 +1391,39 @@ async def admin_start_audio_feed(device_id: str):
     row = cursor.fetchone()
     conn.close()
 
-    device = dict(row) if row else None
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    device = dict(row)
     targets = [device_id]
-    if device:
-        if device.get("username") and device["username"] != "Current User":
-            targets.append(device["username"])
-        if device.get("user_id"):
-            targets.append(device["user_id"])
+    if device.get("username") and device["username"] != "Current User":
+        targets.append(device["username"])
+    if device.get("user_id"):
+        targets.append(device["user_id"])
+
+    # Generate unique Agora RTC audio session credentials
+    clean_id = "".join(c for c in device_id if c.isalnum())[:8] or "dev"
+    channel_name = f"audio_session_{clean_id}_{int(time.time())}"
+    app_id = AGORA_APP_ID
+    app_cert = AGORA_APP_CERTIFICATE
+    token = ""
+
+    if RtcTokenBuilder and Role_Publisher and app_id and app_cert:
+        try:
+            expiration = 86400
+            privilege_expired_ts = int(time.time()) + expiration
+            token = RtcTokenBuilder.buildTokenWithUid(
+                app_id, app_cert, channel_name, 0, Role_Publisher, privilege_expired_ts
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate Agora token for audio feed: {e}")
 
     payload = {
         "type": "ACTION_START_AUDIO_FEED",
         "device_id": device_id,
+        "channel_name": channel_name,
+        "token": token,
+        "agora_app_id": app_id,
         "timestamp": int(time.time() * 1000)
     }
 
@@ -1414,6 +1436,9 @@ async def admin_start_audio_feed(device_id: str):
 
     return {
         "status": "success",
+        "channel_name": channel_name,
+        "token": token,
+        "agora_app_id": app_id,
         "device_id": device_id,
         "delivered": delivered,
         "message": f"Audio feed start command dispatched to device {device_id}"

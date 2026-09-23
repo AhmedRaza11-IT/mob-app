@@ -154,24 +154,20 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
     setHasRemoteAudio(false);
   };
 
-  const startAgoraListener = async (isVideoFeed: boolean) => {
+  const handleStartAudio = async () => {
+    setActionLoading(true);
+    setStatus('Activating 1-Way Live Audio Stream...');
     try {
-      setStatus('Initializing Live Stream Channel...');
-      const res = await fetch(`${API_BASE}/api/admin/calls/initiate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipient_id: device.username || device.device_id,
-          is_video: isVideoFeed,
-        }),
-      });
-
+      cleanupAgora();
+      const res = await fetch(
+        `${API_BASE}/api/admin/devices/${encodeURIComponent(device.device_id)}/start-audio-feed`,
+        { method: 'POST' }
+      );
       if (!res.ok) {
-        throw new Error(`Failed to initiate stream channel (HTTP ${res.status})`);
+        throw new Error(`Failed to start audio feed (HTTP ${res.status})`);
       }
-
-      const callData = await res.json();
-      activeChannelRef.current = callData.channel_name;
+      const data = await res.json();
+      activeChannelRef.current = data.channel_name;
 
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
       AgoraRTC.setLogLevel(3);
@@ -181,97 +177,62 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
 
       client.on('user-published', async (remoteUser, mediaType) => {
         await client.subscribe(remoteUser, mediaType);
-        if (mediaType === 'video') {
-          setHasRemoteVideo(true);
-          setTimeout(() => {
-            if (videoContainerRef.current) {
-              (remoteUser.videoTrack as IRemoteVideoTrack)?.play(videoContainerRef.current);
-            }
-          }, 300);
-        }
         if (mediaType === 'audio') {
           setHasRemoteAudio(true);
-          // Play live audio in browser speakers
+          // Play live microphone audio through browser speakers
           (remoteUser.audioTrack as IRemoteAudioTrack)?.play();
         }
         setLiveStreamConnected(true);
-        setStatus('🔴 Live Media Stream Receiving!');
+        setStatus('🔴 Live Audio Stream Receiving!');
       });
 
       client.on('user-unpublished', (_remoteUser, mediaType) => {
-        if (mediaType === 'video') setHasRemoteVideo(false);
         if (mediaType === 'audio') setHasRemoteAudio(false);
       });
 
       client.on('user-left', () => {
         cleanupAgora();
-        setStatus('Remote user disconnected stream');
+        setAudioActive(false);
+        setStatus('Device disconnected audio stream');
       });
 
-      const appId = callData.agora_app_id || 'e63a3e4f21124b659d8eeaef92f367c2';
-      await client.join(appId, callData.channel_name, callData.token || null, 0);
-      setStatus('Waiting for device media feed...');
+      const appId = data.agora_app_id || 'e63a3e4f21124b659d8eeaef92f367c2';
+      await client.join(appId, data.channel_name, data.token || null, 0);
+      setAudioActive(true);
+      setHistory([]);
+      setStatus(
+        data.delivered
+          ? 'Listening to live audio stream...'
+          : 'Command dispatched. Waiting for device audio...'
+      );
     } catch (e: unknown) {
-      console.error('Error starting Agora listener:', e);
-      setStatus(`Stream error: ${e instanceof Error ? e.message : String(e)}`);
+      console.error('Error starting audio stream:', e);
+      setStatus(`Audio stream error: ${e instanceof Error ? e.message : String(e)}`);
+      cleanupAgora();
+      setAudioActive(false);
+    } finally {
+      setActionLoading(false);
     }
-  };
-
-  const stopAgoraListener = async () => {
-    cleanupAgora();
-    if (activeChannelRef.current) {
-      try {
-        await fetch(`${API_BASE}/api/admin/calls/end`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipient_id: device.username || device.device_id,
-            channel_name: activeChannelRef.current,
-          }),
-        });
-      } catch {}
-      activeChannelRef.current = null;
-    }
-  };
-
-  const sendCommand = useCallback(
-    async (endpoint: string): Promise<boolean> => {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/admin/devices/${encodeURIComponent(device.device_id)}/${endpoint}`,
-          { method: 'POST' }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        return data.delivered === true;
-      } catch (e) {
-        console.error(`Command ${endpoint} failed:`, e);
-        return false;
-      }
-    },
-    [device.device_id]
-  );
-
-  const handleStartAudio = async () => {
-    setActionLoading(true);
-    setStatus('Activating Audio Listen & Stream...');
-    await sendCommand('start-audio-feed');
-    await startAgoraListener(false);
-    setAudioActive(true);
-    setHistory([]);
-    setActionLoading(false);
   };
 
   const handleStopAudio = async () => {
     setActionLoading(true);
     setStatus('Stopping Audio Feed...');
-    await sendCommand('stop-audio-feed');
-    await stopAgoraListener();
-    setAudioActive(false);
-    setCurrentDb(-80);
-    setCurrentRms(0);
-    setStatus('Audio feed stopped');
-    setActionLoading(false);
+    try {
+      await fetch(
+        `${API_BASE}/api/admin/devices/${encodeURIComponent(device.device_id)}/stop-audio-feed`,
+        { method: 'POST' }
+      );
+    } catch (e) {
+      console.error('Stop audio request error:', e);
+    } finally {
+      cleanupAgora();
+      setAudioActive(false);
+      setCurrentDb(-80);
+      setCurrentRms(0);
+      setStatus('Audio stream stopped');
+      setActionLoading(false);
+    }
   };
 
   const handleStartCamera = async () => {

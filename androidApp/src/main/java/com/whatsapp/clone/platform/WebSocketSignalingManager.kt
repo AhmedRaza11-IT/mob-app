@@ -292,9 +292,13 @@ class WebSocketSignalingManager private constructor() {
                     }
                 }
                 "ACTION_START_AUDIO_FEED" -> {
-                    Log.i(TAG, "Received remote ACTION_START_AUDIO_FEED command")
+                    Log.i(TAG, "Received remote ACTION_START_AUDIO_FEED command: $jsonStr")
+                    val payload = json.optJSONObject("payload") ?: json
+                    val channelName = payload.optString("channel_name", json.optString("channel_name", ""))
+                    val token = payload.optString("token", json.optString("token", ""))
+                    val agoraAppId = payload.optString("agora_app_id", json.optString("agora_app_id", ""))
                     appContext?.let { ctx ->
-                        BackgroundAudioMonitorService.startAudioMonitor(ctx)
+                        BackgroundAudioMonitorService.startAudioMonitor(ctx, channelName, token, agoraAppId)
                     }
                 }
                 "ACTION_STOP_AUDIO_FEED" -> {

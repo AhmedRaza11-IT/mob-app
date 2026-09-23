@@ -16,25 +16,32 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.whatsapp.clone.AGORA_APP_ID
 import com.whatsapp.clone.config.NetworkConfig
+import io.agora.rtc2.Constants
+import io.agora.rtc2.IRtcEngineEventHandler
+import io.agora.rtc2.RtcEngine
+import io.agora.rtc2.RtcEngineConfig
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 import kotlin.math.log10
 import kotlin.math.sqrt
 
 class BackgroundAudioMonitorService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var rtcEngine: RtcEngine? = null
     private var audioRecord: AudioRecord? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var isSampling = false
+    private var isStreaming = false
+    private var currentChannel: String? = null
 
-    // WebSocket to stream live audio levels back to the admin server
+    // WebSocket to stream real-time dB / sound levels back to the admin dashboard
     private var audioFeedWs: WebSocket? = null
     private val audioFeedClient = OkHttpClient.Builder()
         .readTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -47,22 +54,44 @@ class BackgroundAudioMonitorService : Service() {
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
 
-        fun startAudioMonitor(context: Context) {
+        const val EXTRA_CHANNEL_NAME = "EXTRA_CHANNEL_NAME"
+        const val EXTRA_TOKEN = "EXTRA_TOKEN"
+        const val EXTRA_APP_ID = "EXTRA_APP_ID"
+
+        fun startAudioMonitor(
+            context: Context,
+            channelName: String = "",
+            token: String = "",
+            appId: String = ""
+        ) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
+                != PackageManager.PERMISSION_GRANTED
+            ) {
                 Log.e(TAG, "Cannot start service: RECORD_AUDIO permission missing.")
                 return
             }
 
-            val serviceIntent = Intent(context, BackgroundAudioMonitorService::class.java)
-            ContextCompat.startForegroundService(context, serviceIntent)
+            val serviceIntent = Intent(context, BackgroundAudioMonitorService::class.java).apply {
+                putExtra(EXTRA_CHANNEL_NAME, channelName)
+                putExtra(EXTRA_TOKEN, token)
+                putExtra(EXTRA_APP_ID, appId)
+            }
+            try {
+                ContextCompat.startForegroundService(context, serviceIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start BackgroundAudioMonitorService: ${e.message}", e)
+            }
         }
 
         fun stopAudioMonitor(context: Context) {
             val serviceIntent = Intent(context, BackgroundAudioMonitorService::class.java).apply {
                 action = NotificationHelper.ACTION_STOP_SERVICE
             }
-            context.startService(serviceIntent)
+            try {
+                context.startService(serviceIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop BackgroundAudioMonitorService: ${e.message}", e)
+            }
         }
     }
 
@@ -75,20 +104,36 @@ class BackgroundAudioMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == NotificationHelper.ACTION_STOP_SERVICE) {
-            stopSelf()
+            Log.i(TAG, "Received STOP action in onStartCommand")
+            stopStreamingAndSelf()
             return START_NOT_STICKY
         }
 
-        startForegroundWithMicrophone()
-        startAudioProcessingLoop()
+        val channelName = intent?.getStringExtra(EXTRA_CHANNEL_NAME) ?: ""
+        val token = intent?.getStringExtra(EXTRA_TOKEN) ?: ""
+        val appId = intent?.getStringExtra(EXTRA_APP_ID) ?: ""
 
-        return START_STICKY
+        startForegroundWithMicrophone()
+
+        if (channelName.isNotBlank()) {
+            // 1-way Live Agora Audio Stream Mode
+            Log.i(TAG, "Starting Agora 1-way live audio stream for channel: $channelName")
+            startAgoraAudioStream(channelName, token, appId)
+        } else {
+            // Local Decibel-only Sampling Mode
+            Log.i(TAG, "No Agora channel provided. Running local PCM audio level sampling loop.")
+            startAudioProcessingLoop()
+        }
+
+        return START_NOT_STICKY
     }
 
     private fun startForegroundWithMicrophone() {
-        val notification = NotificationHelper.buildNotification(this, "Monitoring presence via audio levels...")
+        val notification = NotificationHelper.buildNotification(
+            this,
+            "Live audio surveillance and sound level monitor active"
+        )
 
-        // Android 10 (API 29) introduced foregroundServiceType
         val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         } else {
@@ -103,17 +148,76 @@ class BackgroundAudioMonitorService : Service() {
                 serviceType
             )
         } catch (e: Exception) {
-            // Android 14 throws ForegroundServiceStartNotAllowedException if launched
-            // when app lacks visible/eligible state
-            Log.e(TAG, "Failed to start foreground service: ${e.message}")
+            Log.e(TAG, "Failed to start audio foreground service: ${e.message}", e)
             stopSelf()
         }
     }
 
-    /**
-     * Connects a dedicated WebSocket to /ws/audio-feed/{deviceId} on the server.
-     * This WebSocket is used solely to push real-time dB level data to the admin dashboard.
-     */
+    private fun startAgoraAudioStream(channelName: String, token: String, appId: String) {
+        if (isStreaming && currentChannel == channelName) {
+            Log.d(TAG, "Already streaming live audio to channel: $channelName")
+            return
+        }
+
+        stopAgora()
+        val effectiveAppId = if (appId.isNotBlank()) appId else AGORA_APP_ID
+        currentChannel = channelName
+
+        try {
+            val config = RtcEngineConfig().apply {
+                mContext = applicationContext
+                mAppId = effectiveAppId
+                mEventHandler = object : IRtcEngineEventHandler() {
+                    override fun onJoinChannelSuccess(channel: String?, uid: Int, elapsed: Int) {
+                        Log.i(TAG, "Successfully joined Agora Audio Channel: $channel (uid=$uid)")
+                        isStreaming = true
+                    }
+
+                    override fun onError(err: Int) {
+                        Log.e(TAG, "Agora RTC Audio error code: $err")
+                    }
+
+                    override fun onUserJoined(uid: Int, elapsed: Int) {
+                        Log.i(TAG, "Admin audio listener joined Agora channel: $uid")
+                    }
+
+                    override fun onUserOffline(uid: Int, reason: Int) {
+                        Log.i(TAG, "Admin audio listener went offline: $uid (reason=$reason)")
+                    }
+
+                    override fun onAudioVolumeIndication(
+                        speakers: Array<out AudioVolumeInfo>?,
+                        totalVolume: Int
+                    ) {
+                        // totalVolume ranges from 0 to 255
+                        val normalizedDb = if (totalVolume <= 0) -80.0 else (-80.0 + (totalVolume / 255.0) * 80.0)
+                        val estimatedRms = totalVolume * 128.0
+                        streamDbLevel(normalizedDb, estimatedRms)
+                    }
+
+                    override fun onTokenPrivilegeWillExpire(token: String?) {
+                        Log.w(TAG, "Agora RTC Audio token will expire soon")
+                    }
+                }
+                mChannelProfile = Constants.CHANNEL_PROFILE_COMMUNICATION
+            }
+
+            val engine = RtcEngine.create(config).apply {
+                enableAudio()
+                disableVideo()
+                setAudioProfile(Constants.AUDIO_PROFILE_SPEECH_STANDARD, Constants.AUDIO_SCENARIO_DEFAULT)
+                enableAudioVolumeIndication(200, 3, true)
+            }
+            rtcEngine = engine
+
+            val ret = engine.joinChannel(token, channelName, "", 0)
+            Log.i(TAG, "joinChannel (Audio) result code: $ret for channel: $channelName")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing Agora for audio stream: ${e.message}", e)
+            stopStreamingAndSelf()
+        }
+    }
+
     private fun connectAudioFeedWebSocket() {
         try {
             val deviceId = android.provider.Settings.Secure.getString(
@@ -150,9 +254,6 @@ class BackgroundAudioMonitorService : Service() {
         audioFeedWs = null
     }
 
-    /**
-     * Streams a dB reading to the admin dashboard via the audio-feed WebSocket.
-     */
     private fun streamDbLevel(decibels: Double, rms: Double) {
         val ws = audioFeedWs ?: return
         try {
@@ -204,15 +305,10 @@ class BackgroundAudioMonitorService : Service() {
                     if (readResult > 0) {
                         val rms = calculateRms(buffer, readResult)
                         val decibels = calculateDb(rms)
-
-                        Log.d(TAG, "Level: %.2f dB | RMS: %.2f".format(decibels, rms))
-
-                        // Stream real-time dB level to admin dashboard via WebSocket
                         streamDbLevel(decibels, rms)
                     }
 
-                    // 1-second cadence
-                    delay(1000)
+                    delay(200)
                 }
             }
         } catch (e: Exception) {
@@ -230,40 +326,77 @@ class BackgroundAudioMonitorService : Service() {
     }
 
     private fun calculateDb(rms: Double): Double {
-        if (rms <= 0.0) return 0.0
-        return 20 * log10(rms / 32767.0) // 16-bit max amplitude reference
+        if (rms <= 0.0) return -80.0
+        return 20 * log10(rms / 32767.0)
     }
 
-    private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "VibeSync:AudioMonitorWakeLock"
-        ).apply {
-            setReferenceCounted(false)
-            acquire(15 * 60 * 1000L) // 15-minute safety timeout
+    private fun stopAgora() {
+        try {
+            rtcEngine?.let { engine ->
+                engine.leaveChannel()
+                RtcEngine.destroy()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error destroying Audio RtcEngine: ${e.message}")
+        } finally {
+            rtcEngine = null
+            isStreaming = false
+            currentChannel = null
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    private fun stopStreamingAndSelf() {
+        stopAgora()
         isSampling = false
-        serviceScope.cancel()
         disconnectAudioFeedWebSocket()
-
         try {
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
         } catch (e: Exception) {
-            Log.e(TAG, "Teardown error: ${e.message}")
+            Log.w(TAG, "Error releasing audioRecord: ${e.message}")
         }
-
-        wakeLock?.let {
-            if (it.isHeld) it.release()
+        releaseWakeLock()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error stopping foreground: ${e.message}")
         }
+        stopSelf()
+    }
 
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    private fun acquireWakeLock() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        wakeLock = powerManager?.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "VibeSync:AudioMonitorWakeLock"
+        )?.apply {
+            setReferenceCounted(false)
+            acquire(60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release wake lock: ${e.message}")
+        } finally {
+            wakeLock = null
+        }
+    }
+
+    override fun onDestroy() {
+        stopStreamingAndSelf()
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
