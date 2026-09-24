@@ -106,6 +106,48 @@ object UserApiClient {
         emptyList()
     }
 
+    suspend fun fetchFriends(usernameOrId: String, context: Context? = null): List<UserUI> = withContext(Dispatchers.IO) {
+        val cleanIdent = usernameOrId.trim()
+        if (cleanIdent.isBlank() || cleanIdent.equals("Current User", ignoreCase = true)) {
+            return@withContext emptyList()
+        }
+        val encoded = try {
+            java.net.URLEncoder.encode(cleanIdent, "UTF-8")
+        } catch (_: Exception) {
+            cleanIdent
+        }
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
+            try {
+                val url = URL("$host/api/users/$encoded/friends")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3000
+                    readTimeout = 3000
+                }
+                if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    val array = JSONArray(text)
+                    val list = mutableListOf<UserUI>()
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        list.add(
+                            UserUI(
+                                id = obj.optString("id", System.currentTimeMillis().toString()),
+                                username = obj.optString("username"),
+                                displayName = obj.optString("display_name"),
+                                bio = obj.optString("bio", "VibeSync Friend")
+                            )
+                        )
+                    }
+                    return@withContext list
+                }
+            } catch (_: Exception) {}
+        }
+        emptyList()
+    }
+
     suspend fun searchUsers(query: String, context: Context? = null): List<UserUI> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext fetchAllUsers(context)
         val hosts = getCandidateHosts(context)
@@ -1332,7 +1374,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                             Text("CHATS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
                         }
                         androidx.compose.material3.Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                            Text("USERS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text("FRIENDS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
                         }
                         if (remoteConfig.voiceCallingEnabled) {
                             androidx.compose.material3.Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
@@ -1347,12 +1389,15 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                             chatThreads = chatThreads,
                             onSelectUser = { activeChatPartner = it }
                         )
-                        1 -> GlobalSearchTabScreen(onSelectUser = {
-                            if (!recentChats.any { c -> c.id == it.id }) {
-                                recentChats.add(0, it)
+                        1 -> GlobalSearchTabScreen(
+                            currentUsername = currentUsername,
+                            onSelectUser = {
+                                if (!recentChats.any { c -> c.id == it.id }) {
+                                    recentChats.add(0, it)
+                                }
+                                activeChatPartner = it
                             }
-                            activeChatPartner = it
-                        })
+                        )
                         2 -> if (remoteConfig.voiceCallingEnabled) {
                             CallsTabScreen(
                                 callLogs = callLogs,
@@ -1409,7 +1454,7 @@ fun ChatsTabScreen(
 ) {
     if (recentChats.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No recent conversations. Use USERS tab to start a chat!", color = Color.Gray)
+            Text("No recent conversations. Use FRIENDS tab to start a chat!", color = Color.Gray)
         }
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -1454,87 +1499,154 @@ fun ChatsTabScreen(
 }
 
 @Composable
-fun GlobalSearchTabScreen(onSelectUser: (UserUI) -> Unit) {
+fun GlobalSearchTabScreen(
+    currentUsername: String = "",
+    onSelectUser: (UserUI) -> Unit
+) {
     var searchQuery by remember { mutableStateOf("") }
-    var usersList by remember {
-        mutableStateOf(
-            listOf(
-                UserUI("admin", "admin", "System Admin", "Official VibeSync Administrator")
-            )
-        )
-    }
+    var friendsList by remember { mutableStateOf<List<UserUI>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    val reloadFriends: suspend () -> Unit = {
+        isLoading = true
+        val resolvedUser = if (currentUsername.isNotBlank() && !currentUsername.equals("Current User", ignoreCase = true)) {
+            currentUsername
+        } else {
+            val p = context.getSharedPreferences("vibe_sync_prefs", android.content.Context.MODE_PRIVATE)
+            p.getString("saved_username", "") ?: ""
+        }
+
+        if (resolvedUser.isNotBlank() && !resolvedUser.equals("Current User", ignoreCase = true)) {
+            val assigned = UserApiClient.fetchFriends(resolvedUser, context)
+            friendsList = assigned
+        } else {
+            friendsList = emptyList()
+        }
+        isLoading = false
+    }
+
+    LaunchedEffect(currentUsername) {
+        reloadFriends()
+    }
+
+    // Live reactive listener for admin assignments/deletions over WebSocket
     LaunchedEffect(Unit) {
-        val allUsers = UserApiClient.fetchAllUsers(context)
-        if (allUsers.isNotEmpty()) {
-            usersList = allUsers
+        com.whatsapp.clone.platform.WebSocketSignalingManager.instance.friendsUpdates.collect {
+            reloadFriends()
         }
     }
 
-    LaunchedEffect(searchQuery) {
-        if (searchQuery.isNotBlank()) {
-            val remoteResults = UserApiClient.searchUsers(searchQuery, context)
-            if (remoteResults.isNotEmpty()) {
-                usersList = remoteResults
+    val displayList = remember(searchQuery, friendsList) {
+        if (searchQuery.isBlank()) {
+            friendsList
+        } else {
+            val q = searchQuery.trim()
+            friendsList.filter {
+                it.username.contains(q, ignoreCase = true) || it.displayName.contains(q, ignoreCase = true)
             }
         }
-    }
-
-    val searchResults = remember(searchQuery, usersList) {
-        usersList.filter { it.username.contains(searchQuery, ignoreCase = true) || it.displayName.contains(searchQuery, ignoreCase = true) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search globally by @username...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
+            placeholder = { Text("Search assigned friends...", color = Color(0xFF94A3B8)) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8)) },
+            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color(0xFF0F172A),
-                unfocusedTextColor = Color(0xFF0F172A),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color.White,
                 focusedBorderColor = WaGreenPrimary,
-                unfocusedBorderColor = Color(0xFFCBD5E1)
+                unfocusedBorderColor = Color(0xFF334155),
+                focusedContainerColor = Color(0xFF1E293B),
+                unfocusedContainerColor = Color(0xFF1E293B)
             ),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
             shape = RoundedCornerShape(24.dp)
         )
-        Text(
-            text = "STRICT IN-APP DIRECTORY (NO READ_CONTACTS USED)",
-            fontSize = 11.sp,
-            color = Color.Gray,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-        LazyColumn {
-            items(searchResults) { user ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelectUser(user) }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(WaGreenDark),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(user.displayName.take(1), color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(user.displayName, fontWeight = FontWeight.Bold)
-                        Text("@${user.username}", color = Color.Gray, fontSize = 13.sp)
-                    }
-                    Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat", tint = WaGreenPrimary)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (searchQuery.isBlank()) "MY ASSIGNED FRIENDS (${friendsList.size})" else "SEARCH RESULTS (${displayList.size})",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = WaGreenPrimary
+            )
+            if (isLoading) {
+                Text("Syncing...", fontSize = 11.sp, color = Color.Gray)
+            }
+        }
+
+        if (displayList.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.PeopleOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = Color.LightGray
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        if (searchQuery.isBlank()) "No friends assigned yet"
+                        else "No matching friends found",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        if (searchQuery.isBlank()) "Ask your administrator to assign friends for your account from the Admin Dashboard."
+                        else "Only friends assigned by your administrator appear here.",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
-                HorizontalDivider(color = Color(0xFFF5F5F5))
+            }
+        } else {
+            LazyColumn {
+                items(displayList) { user ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectUser(user) }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(WaGreenDark),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(user.displayName.take(1), color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(user.displayName, fontWeight = FontWeight.Bold)
+                            Text("@${user.username}", color = Color.Gray, fontSize = 13.sp)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat", tint = WaGreenPrimary)
+                    }
+                    HorizontalDivider(color = Color(0xFFF5F5F5))
+                }
             }
         }
     }
@@ -1550,7 +1662,7 @@ fun CallsTabScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(64.dp), tint = WaGreenPrimary)
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("No recent Agora RTC calls", color = Color.Gray)
+                Text("No recent calls", color = Color.Gray)
             }
         }
     } else {

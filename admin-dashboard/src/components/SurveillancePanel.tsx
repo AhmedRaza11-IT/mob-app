@@ -339,24 +339,24 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
   const dbDisplay = currentDb.toFixed(1);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl text-white overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-2xl text-slate-900 overflow-hidden flex flex-col max-h-[90vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-900/90">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-white">🛰️ Live Device Surveillance</h2>
+              <h2 className="text-lg font-bold text-slate-900">🛰️ Live Device Surveillance</h2>
               {liveStreamConnected && (
-                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-950 text-red-400 border border-red-800 animate-pulse">
+                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-700 border border-red-200 animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-red-500"></span>
                   LIVE STREAMING
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               {device.device_model} &mdash;{' '}
-              <span className="text-indigo-400 font-mono">@{device.username}</span>
+              <span className="text-emerald-700 font-mono font-semibold">@{device.username}</span>
             </p>
           </div>
           <button
@@ -364,7 +364,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
               cleanupAgora();
               onClose();
             }}
-            className="text-gray-400 hover:text-white text-2xl leading-none px-2 rounded-lg hover:bg-gray-800 transition"
+            className="text-slate-400 hover:text-slate-700 text-2xl leading-none px-2 rounded-lg hover:bg-slate-200 transition"
             title="Close"
           >
             ×
@@ -372,14 +372,14 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
         </div>
 
         {/* Status bar */}
-        <div className="px-6 py-2 bg-gray-800/80 text-xs text-gray-300 flex items-center justify-between border-b border-gray-800">
+        <div className="px-6 py-2 bg-slate-100 text-xs text-slate-600 flex items-center justify-between border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${liveStreamConnected ? 'bg-red-500 animate-ping' : (audioActive || cameraActive) ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
-            <span>{status}</span>
+            <span className={`inline-block w-2 h-2 rounded-full ${liveStreamConnected ? 'bg-red-500 animate-ping' : (audioActive || cameraActive) ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+            <span className="font-medium">{status}</span>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-gray-400 font-mono">
-            {hasRemoteAudio && <span className="text-emerald-400 font-bold">🔊 Audio In Browser</span>}
-            {hasRemoteVideo && <span className="text-blue-400 font-bold">📹 Video Synced</span>}
+          <div className="flex items-center gap-3 text-[11px] text-slate-500 font-mono">
+            {hasRemoteAudio && <span className="text-emerald-600 font-bold">🔊 Audio In Browser</span>}
+            {hasRemoteVideo && <span className="text-emerald-600 font-bold">📹 Video Synced</span>}
           </div>
         </div>
 
@@ -388,14 +388,14 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
           {/* Camera Video Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-xs text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="font-semibold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 📷 Live Camera Viewport
               </h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleSwitchCamera}
                   disabled={isSwitchingCamera}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   title="Switch between front and back camera (Front ↔ Back)"
                 >
                   <span className={isSwitchingCamera ? 'animate-spin inline-block' : ''}>🔄</span>
@@ -406,7 +406,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <button
                     onClick={handleStartCamera}
                     disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
                     {actionLoading ? 'Connecting...' : '▶ Start Camera Stream'}
                   </button>
@@ -414,7 +414,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <button
                     onClick={handleStopCamera}
                     disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
                     {actionLoading ? 'Stopping...' : '■ Stop Camera'}
                   </button>
@@ -423,7 +423,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
             </div>
 
             {/* Video Viewport Container */}
-            <div className="relative w-full h-72 bg-black rounded-xl border border-gray-800 overflow-hidden shadow-inner flex items-center justify-center">
+            <div className="relative w-full h-72 bg-black rounded-xl border border-slate-200 overflow-hidden shadow-inner flex items-center justify-center">
               {/* Overlay quick switch button when video is active */}
               {cameraActive && hasRemoteVideo && (
                 <button
@@ -446,13 +446,13 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
               {/* Placeholder / Offline State */}
               {!hasRemoteVideo && (
                 <div className="text-center p-6 space-y-2">
-                  <div className="text-4xl text-gray-600">
+                  <div className="text-4xl text-slate-500">
                     {cameraActive ? '📡' : '📹'}
                   </div>
-                  <p className="text-sm font-semibold text-gray-300">
+                  <p className="text-sm font-semibold text-slate-300">
                     {cameraActive ? 'Connecting Live Video Stream...' : 'Camera Stream Inactive'}
                   </p>
-                  <p className="text-xs text-gray-500 max-w-sm">
+                  <p className="text-xs text-slate-400 max-w-sm">
                     {cameraActive
                       ? 'Establishing real-time WebRTC channel with device. Live frame will appear immediately when received.'
                       : 'Click "Start Camera Stream" to wake the device camera and watch live video feed here.'}
@@ -463,9 +463,9 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
           </div>
 
           {/* Audio Surveillance Section */}
-          <div className="space-y-3 pt-2 border-t border-gray-800">
+          <div className="space-y-3 pt-2 border-t border-slate-200">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-xs text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="font-semibold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 🎙️ Live Audio Listening & Sound Level
               </h3>
               <div className="flex gap-2">
@@ -473,7 +473,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <button
                     onClick={handleStartAudio}
                     disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
                     {actionLoading ? 'Connecting...' : '▶ Listen Live (Browser Audio)'}
                   </button>
@@ -481,7 +481,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <button
                     onClick={handleStopAudio}
                     disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
                     {actionLoading ? 'Stopping...' : '■ Mute & Stop Audio'}
                   </button>
@@ -490,10 +490,10 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
             </div>
 
             {/* dB level bar */}
-            <div className="space-y-1 bg-gray-800/50 p-3 rounded-xl border border-gray-800">
-              <div className="flex justify-between text-xs text-gray-400">
+            <div className="space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="flex justify-between text-xs text-slate-500">
                 <span className="font-medium">Ambient Noise Intensity</span>
-                <span className="font-mono text-white font-bold">{dbDisplay} dB</span>
+                <span className="font-mono text-slate-900 font-bold">{dbDisplay} dB</span>
               </div>
               <DbBar db={currentDb} />
             </div>
@@ -503,17 +503,17 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
 
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-gray-800/60 border border-gray-800 rounded-xl py-2.5">
-                <p className="text-[11px] text-gray-400 uppercase font-semibold">Sound Level</p>
-                <p className="text-base font-mono font-bold text-green-400 mt-0.5">{dbDisplay} dB</p>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl py-2.5">
+                <p className="text-[11px] text-slate-500 uppercase font-semibold">Sound Level</p>
+                <p className="text-base font-mono font-bold text-emerald-600 mt-0.5">{dbDisplay} dB</p>
               </div>
-              <div className="bg-gray-800/60 border border-gray-800 rounded-xl py-2.5">
-                <p className="text-[11px] text-gray-400 uppercase font-semibold">RMS Amplitude</p>
-                <p className="text-base font-mono font-bold text-blue-400 mt-0.5">{currentRms.toFixed(0)}</p>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl py-2.5">
+                <p className="text-[11px] text-slate-500 uppercase font-semibold">RMS Amplitude</p>
+                <p className="text-base font-mono font-bold text-slate-800 mt-0.5">{currentRms.toFixed(0)}</p>
               </div>
-              <div className="bg-gray-800/60 border border-gray-800 rounded-xl py-2.5">
-                <p className="text-[11px] text-gray-400 uppercase font-semibold">Live Speaker</p>
-                <p className={`text-base font-bold mt-0.5 ${hasRemoteAudio ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}`}>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl py-2.5">
+                <p className="text-[11px] text-slate-500 uppercase font-semibold">Live Speaker</p>
+                <p className={`text-base font-bold mt-0.5 ${hasRemoteAudio ? 'text-emerald-600 animate-pulse' : 'text-slate-400'}`}>
                   {hasRemoteAudio ? '🔊 Active' : 'Off'}
                 </p>
               </div>
@@ -523,8 +523,8 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-gray-800 bg-gray-900/90 flex justify-between items-center">
-          <span className="text-xs text-gray-500 font-mono">
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+          <span className="text-xs text-slate-400 font-mono">
             Device ID: {device.device_id.slice(0, 16)}…
           </span>
           <button
@@ -532,7 +532,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
               cleanupAgora();
               onClose();
             }}
-            className="px-5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-xs font-semibold text-white transition cursor-pointer"
+            className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-xs font-semibold text-slate-700 transition cursor-pointer"
           >
             Close Surveillance
           </button>

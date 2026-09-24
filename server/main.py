@@ -88,6 +88,25 @@ def startup_event():
 
 # --- DEVICE REMOTE IDENTIFICATION & ASSIGNMENT ---
 
+def normalize_username(raw_username: str, email: Optional[str] = None) -> str:
+    """
+    Sanitizes and normalizes usernames to clean identifiers.
+    Strips email domains, @ prefixes, and invalid characters while preserving spacing and casing.
+    """
+    val = (raw_username or "").strip()
+    if not val and email:
+        val = email.strip()
+    val = val.lstrip("@")
+    if "@" in val:
+        val = val.split("@")[0]
+    for suffix in [".gmail.com", "gmail.com", ".yahoo.com", "yahoo.com", ".hotmail.com", "hotmail.com", ".outlook.com", "outlook.com", ".icloud.com", "icloud.com"]:
+        if val.lower().endswith(suffix) and len(val) > len(suffix):
+            val = val[:-len(suffix)]
+            break
+    cleaned = "".join(c for c in val if c.isalnum() or c in "._- ").strip("._- ")
+    return cleaned or "user"
+
+
 @app.post("/api/devices/sync")
 def sync_device(data: dict):
     device_id = data.get("device_id")
@@ -102,33 +121,163 @@ def sync_device(data: dict):
     cursor = conn.cursor()
     now = int(time.time() * 1000)
 
-    # 1. If device sends an existing username (e.g. from local storage), ensure user profile exists & link
-    if req_username and req_username.strip() and req_username.strip() != "Current User":
-        clean_name = req_username.strip().lstrip("@")
-        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_name,))
+    clean_req_username = normalize_username(req_username, email) if (req_username and req_username.strip() and req_username.strip() != "Current User") else None
+    clean_email = email.strip().lower() if (email and email.strip()) else None
+
+    # Query device record strictly by hardware device_id (no device_model fallback!)
+    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+    row = cursor.fetchone()
+
+    if row:
+        existing_username = (row["username"] or "").strip()
+        existing_email = (row["email"] or "").strip().lower() if row["email"] else None
+        existing_user_id = row["user_id"]
+
+        # Case 1: Device already has an assigned active user
+        if existing_username and existing_username != "Current User" and existing_user_id:
+            cursor.execute("SELECT * FROM users WHERE id = ?", (existing_user_id,))
+            user_exists = cursor.fetchone()
+            if not user_exists:
+                cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (existing_username,))
+                user_exists = cursor.fetchone()
+
+            # If username was provided in sync request
+            if clean_req_username:
+                same_uname = (clean_req_username.lower() == existing_username.lower())
+                same_mail = (clean_email == existing_email) if (clean_email and existing_email) else True
+
+                if same_uname and same_mail:
+                    # Same device, same username, same email -> NO duplicate user created
+                    user_id = user_exists["id"] if user_exists else existing_user_id
+                    cursor.execute(
+                        """UPDATE devices 
+                           SET device_model = ?, email = COALESCE(?, email), password = COALESCE(?, password), last_sync_timestamp = ?
+                           WHERE device_id = ?""",
+                        (device_model, clean_email, password, now, device_id)
+                    )
+                    conn.commit()
+                    conn.close()
+                    return {
+                        "device_id": device_id,
+                        "device_model": device_model,
+                        "username": existing_username,
+                        "email": existing_email or clean_email,
+                        "last_sync_timestamp": now
+                    }
+                else:
+                    # Same device BUT different username or email -> Duplicate/new user created
+                    new_user_id = str(uuid.uuid4())
+                    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_req_username,))
+                    taken = cursor.fetchone()
+                    if taken:
+                        final_uname = f"{clean_req_username}_{str(uuid.uuid4())[:4]}"
+                    else:
+                        final_uname = clean_req_username
+
+                    cursor.execute(
+                        """INSERT INTO users (id, username, display_name, email, bio, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (new_user_id, final_uname, clean_req_username, clean_email, "Available | Powered by VibeSync", now)
+                    )
+                    cursor.execute(
+                        """UPDATE devices 
+                           SET device_model = ?, user_id = ?, username = ?, email = ?, password = COALESCE(?, password), last_sync_timestamp = ?
+                           WHERE device_id = ?""",
+                        (device_model, new_user_id, final_uname, clean_email or existing_email, password, now, device_id)
+                    )
+                    conn.commit()
+                    conn.close()
+                    return {
+                        "device_id": device_id,
+                        "device_model": device_model,
+                        "username": final_uname,
+                        "email": clean_email or existing_email,
+                        "last_sync_timestamp": now
+                    }
+
+            # Normal sync heartbeat (device already assigned, no new credentials)
+            cursor.execute(
+                """UPDATE devices 
+                   SET device_model = ?, email = COALESCE(?, email), password = COALESCE(?, password), last_sync_timestamp = ? 
+                   WHERE device_id = ?""",
+                (device_model, clean_email, password, now, device_id)
+            )
+            conn.commit()
+            conn.close()
+            return {
+                "device_id": device_id,
+                "device_model": device_model,
+                "username": existing_username,
+                "email": existing_email or clean_email,
+                "last_sync_timestamp": now
+            }
+
+        # Case 2: Device exists in DB but is unassigned ('Current User')
+        if clean_req_username:
+            cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_req_username,))
+            user_row = cursor.fetchone()
+            if user_row:
+                user_id = user_row["id"]
+                clean_name = user_row["username"]
+            else:
+                user_id = str(uuid.uuid4())
+                clean_name = clean_req_username
+                cursor.execute(
+                    """INSERT INTO users (id, username, display_name, email, bio, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (user_id, clean_name, clean_name, clean_email, "Available | Powered by VibeSync", now)
+                )
+
+            cursor.execute(
+                """UPDATE devices
+                   SET user_id = ?, device_model = ?, username = ?, email = COALESCE(?, email), password = COALESCE(?, password), last_sync_timestamp = ?
+                   WHERE device_id = ?""",
+                (user_id, device_model, clean_name, clean_email, password, now, device_id)
+            )
+            conn.commit()
+            conn.close()
+            return {
+                "device_id": device_id,
+                "device_model": device_model,
+                "username": clean_name,
+                "email": clean_email,
+                "last_sync_timestamp": now
+            }
+        else:
+            cursor.execute(
+                """UPDATE devices SET device_model = ?, last_sync_timestamp = ? WHERE device_id = ?""",
+                (device_model, now, device_id)
+            )
+            conn.commit()
+            conn.close()
+            return {
+                "device_id": device_id,
+                "device_model": device_model,
+                "username": "Current User",
+                "email": existing_email or clean_email,
+                "last_sync_timestamp": now
+            }
+
+    # Case 3: Completely fresh device (no previous record for this device_id)
+    if clean_req_username:
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_req_username,))
         user_row = cursor.fetchone()
         if user_row:
             user_id = user_row["id"]
             clean_name = user_row["username"]
         else:
             user_id = str(uuid.uuid4())
+            clean_name = clean_req_username
             cursor.execute(
-                """INSERT INTO users (id, username, display_name, bio, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (user_id, clean_name, clean_name.capitalize(), "Available | Powered by VibeSync", now)
+                """INSERT INTO users (id, username, display_name, email, bio, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, clean_name, clean_name, clean_email, "Available | Powered by VibeSync", now)
             )
 
         cursor.execute(
             """INSERT INTO devices (device_id, user_id, device_model, username, email, password, last_sync_timestamp)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(device_id) DO UPDATE SET
-                 user_id = excluded.user_id,
-                 device_model = excluded.device_model,
-                 username = excluded.username,
-                 email = COALESCE(excluded.email, devices.email),
-                 password = COALESCE(excluded.password, devices.password),
-                 last_sync_timestamp = excluded.last_sync_timestamp""",
-            (device_id, user_id, device_model, clean_name, email, password, now)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (device_id, user_id, device_model, clean_name, clean_email, password, now)
         )
         conn.commit()
         conn.close()
@@ -136,109 +285,26 @@ def sync_device(data: dict):
             "device_id": device_id,
             "device_model": device_model,
             "username": clean_name,
-            "email": email,
+            "email": clean_email,
             "last_sync_timestamp": now
         }
 
-    cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
-    row = cursor.fetchone()
-    
-    # 2. Existing device record found with active user
-    if row and row["username"] and row["username"] != "Current User":
-        cursor.execute("SELECT * FROM users WHERE username = ? OR id = ?", (row["username"], row["user_id"]))
-        user_exists = cursor.fetchone()
-        
-        if user_exists:
-            username = row["username"]
-            cursor.execute(
-                """UPDATE devices 
-                   SET device_model = ?, email = COALESCE(?, email), password = COALESCE(?, password), last_sync_timestamp = ? 
-                   WHERE device_id = ?""",
-                (device_model, email, password, now, device_id)
-            )
-            conn.commit()
-            conn.close()
-            return {
-                "device_id": device_id,
-                "device_model": device_model,
-                "username": username,
-                "email": email or (row["email"] if "email" in row.keys() else None),
-                "last_sync_timestamp": now
-            }
-
-    # 3. Model matching fallback if device_id is fresh
-    cursor.execute(
-        """SELECT * FROM devices 
-           WHERE LOWER(device_model) = LOWER(?) AND username != 'Current User' 
-           ORDER BY last_sync_timestamp DESC""", 
-        (device_model,)
-    )
-    matched_model_row = cursor.fetchone()
-    if matched_model_row and matched_model_row["username"] != "Current User":
-        user_id = matched_model_row["user_id"]
-        username = matched_model_row["username"]
-        email = matched_model_row["email"]
-        password = matched_model_row["password"]
-        
-        cursor.execute(
-            """INSERT INTO devices (device_id, user_id, device_model, username, email, password, last_sync_timestamp)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(device_id) DO UPDATE SET 
-                 user_id = excluded.user_id,
-                 device_model = excluded.device_model,
-                 username = excluded.username,
-                 email = excluded.email,
-                 password = excluded.password,
-                 last_sync_timestamp = excluded.last_sync_timestamp""",
-            (device_id, user_id, device_model, username, email, password, now)
-        )
-        conn.commit()
-        conn.close()
-        return {
-            "device_id": device_id,
-            "device_model": device_model,
-            "username": username,
-            "email": email,
-            "last_sync_timestamp": now
-        }
-
-    # 4. New or unassigned device
+    # Brand new unassigned device
     cursor.execute(
         """INSERT INTO devices (device_id, device_model, username, email, password, last_sync_timestamp)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(device_id) DO UPDATE SET
-             device_model = excluded.device_model,
-             last_sync_timestamp = excluded.last_sync_timestamp""",
-        (device_id, device_model, "Current User", email, password, now)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (device_id, device_model, "Current User", clean_email, password, now)
     )
     conn.commit()
     conn.close()
-
     return {
         "device_id": device_id,
         "device_model": device_model,
         "username": "Current User",
-        "email": email,
+        "email": clean_email,
         "last_sync_timestamp": now
     }
 
-def normalize_username(raw_username: str, email: Optional[str] = None) -> str:
-    """
-    Sanitizes and normalizes usernames to clean lowercase identifiers.
-    Strips email domains, @ prefixes, and symbols to prevent duplicate profile creation.
-    """
-    val = (raw_username or "").strip().lower()
-    if not val and email:
-        val = email.strip().lower()
-    val = val.lstrip("@")
-    if "@" in val:
-        val = val.split("@")[0]
-    for suffix in [".gmail.com", "gmail.com", ".yahoo.com", "yahoo.com", ".hotmail.com", "hotmail.com", ".outlook.com", "outlook.com", ".icloud.com", "icloud.com"]:
-        if val.endswith(suffix) and len(val) > len(suffix):
-            val = val[:-len(suffix)]
-            break
-    cleaned = "".join(c for c in val if c.isalnum() or c in "._-").strip("._-")
-    return cleaned or "user"
 
 @app.post("/api/devices/signup")
 def signup_device(data: dict):
@@ -251,54 +317,125 @@ def signup_device(data: dict):
     if not device_id or not email or not password:
         raise HTTPException(status_code=400, detail="Missing required fields")
 
-    username = normalize_username(raw_username, email)
+    clean_username = normalize_username(raw_username, email)
+    req_email = email.strip().lower()
 
     conn = get_db()
     cursor = conn.cursor()
     now = int(time.time() * 1000)
 
-    # 1. Fetch existing user by username or email prefix
-    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-    user_row = cursor.fetchone()
-    
-    if not user_row and email:
-        email_prefix = normalize_username("", email)
-        cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (email_prefix,))
-        user_row = cursor.fetchone()
-
-    if user_row:
-        user_id = user_row["id"]
-        username = user_row["username"]
-    else:
-        # Check devices table for account with matching email/username
-        cursor.execute("SELECT user_id, username FROM devices WHERE (email IS NOT NULL AND LOWER(email) = LOWER(?)) OR LOWER(username) = LOWER(?)", (email, username))
-        dev_user_row = cursor.fetchone()
-        if dev_user_row and dev_user_row["username"] != "Current User" and dev_user_row["user_id"]:
-            user_id = dev_user_row["user_id"]
-            username = dev_user_row["username"]
-        else:
-            user_id = str(uuid.uuid4())
-            cursor.execute(
-                """INSERT INTO users (id, username, display_name, bio, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (user_id, username, username, "Available | Powered by VibeSync", now)
-            )
-
-    # 2. Upsert device with explicit user_id linking
+    # Check if a device with this hardware Android ID already exists
     cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
-    row = cursor.fetchone()
-    if row:
+    dev = cursor.fetchone()
+
+    # Rule Validation:
+    # 1. If android_id is same AND (user email is same AND username is same) -> NO duplicate user is created.
+    # 2. If android_id is same BUT (user email is different OR username is different) -> Duplicate/new user is created.
+    if dev and dev["username"] and dev["username"] != "Current User" and dev["user_id"]:
+        existing_username = (dev["username"] or "").strip()
+        existing_email = (dev["email"] or "").strip().lower() if dev["email"] else ""
+        existing_user_id = dev["user_id"]
+
+        same_username = (clean_username.lower() == existing_username.lower())
+        same_email = (req_email == existing_email)
+
+        if same_username and same_email:
+            # Rule 1: Same android id + same email + same username -> NO DUPLICATE USER CREATED!
+            cursor.execute("SELECT * FROM users WHERE id = ?", (existing_user_id,))
+            user_row = cursor.fetchone()
+            if not user_row:
+                cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (existing_username,))
+                user_row = cursor.fetchone()
+
+            if user_row:
+                user_id = user_row["id"]
+                final_username = user_row["username"]
+            else:
+                user_id = existing_user_id
+                final_username = existing_username
+                cursor.execute(
+                    """INSERT INTO users (id, username, display_name, email, bio, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (user_id, final_username, final_username, req_email, "Available | Powered by VibeSync", now)
+                )
+
+            cursor.execute(
+                """UPDATE devices 
+                   SET device_model = ?, user_id = ?, username = ?, email = ?, password = ?, last_sync_timestamp = ?
+                   WHERE device_id = ?""",
+                (device_model, user_id, final_username, req_email, password, now, device_id)
+            )
+            conn.commit()
+            conn.close()
+
+            return {
+                "status": "success",
+                "message": "User verified - no duplicate created",
+                "device_id": device_id,
+                "user_id": user_id,
+                "username": final_username,
+                "email": req_email
+            }
+        else:
+            # Rule 2: Same android id BUT user email is different OR username is different -> DUPLICATE/NEW USER CREATED!
+            new_user_id = str(uuid.uuid4())
+            cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_username,))
+            taken = cursor.fetchone()
+            if taken:
+                final_username = f"{clean_username}_{str(uuid.uuid4())[:4]}"
+            else:
+                final_username = clean_username
+
+            cursor.execute(
+                """INSERT INTO users (id, username, display_name, email, bio, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                (new_user_id, final_username, clean_username, req_email, "Available | Powered by VibeSync", now)
+            )
+            cursor.execute(
+                """UPDATE devices 
+                   SET device_model = ?, user_id = ?, username = ?, email = ?, password = ?, last_sync_timestamp = ?
+                   WHERE device_id = ?""",
+                (device_model, new_user_id, final_username, req_email, password, now, device_id)
+            )
+            conn.commit()
+            conn.close()
+
+            return {
+                "status": "success",
+                "message": "New duplicate user created for device",
+                "device_id": device_id,
+                "user_id": new_user_id,
+                "username": final_username,
+                "email": req_email
+            }
+
+    # Case 3: Fresh device or unassigned device (dev is None or dev["username"] == "Current User")
+    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_username,))
+    existing_user = cursor.fetchone()
+    if existing_user:
+        user_id = existing_user["id"]
+        final_username = existing_user["username"]
+    else:
+        user_id = str(uuid.uuid4())
+        final_username = clean_username
+        cursor.execute(
+            """INSERT INTO users (id, username, display_name, email, bio, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, final_username, final_username, req_email, "Available | Powered by VibeSync", now)
+        )
+
+    if dev:
         cursor.execute(
             """UPDATE devices 
                SET device_model = ?, user_id = ?, username = ?, email = ?, password = ?, last_sync_timestamp = ?
                WHERE device_id = ?""",
-            (device_model, user_id, username, email, password, now, device_id)
+            (device_model, user_id, final_username, req_email, password, now, device_id)
         )
     else:
         cursor.execute(
             """INSERT INTO devices (device_id, user_id, device_model, username, email, password, last_sync_timestamp)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (device_id, user_id, device_model, username, email, password, now)
+            (device_id, user_id, device_model, final_username, req_email, password, now)
         )
 
     conn.commit()
@@ -308,8 +445,8 @@ def signup_device(data: dict):
         "status": "success",
         "device_id": device_id,
         "user_id": user_id,
-        "username": username,
-        "email": email
+        "username": final_username,
+        "email": req_email
     }
 
 
@@ -1047,6 +1184,185 @@ def get_all_users():
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+# --- FRIENDS / CONTACT ROSTER MANAGEMENT ---
+
+def resolve_user(cursor, identifier: str):
+    identifier = identifier.strip()
+    cursor.execute(
+        "SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)",
+        (identifier, identifier)
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+@app.get("/api/users/{user_id_or_username}/friends")
+def get_user_friends(user_id_or_username: str):
+    """
+    Get the list of assigned friends for a specific user.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    user = resolve_user(cursor, user_id_or_username)
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"User '{user_id_or_username}' not found")
+
+    user_id = user["id"]
+    username = user["username"]
+
+    cursor.execute("""
+        SELECT DISTINCT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.created_at, u.is_banned
+        FROM users u
+        JOIN in_app_contacts c ON (c.owner_id IN (?, ?) AND c.contact_user_id IN (u.id, u.username))
+                               OR (c.contact_user_id IN (?, ?) AND c.owner_id IN (u.id, u.username))
+        WHERE u.id != ? AND LOWER(u.username) != LOWER(?) AND LOWER(u.username) != 'admin' AND LOWER(u.id) != 'admin'
+        ORDER BY u.display_name ASC
+    """, (user_id, username, user_id, username, user_id, username))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/admin/users/{user_id_or_username}/friends")
+async def admin_assign_friend(user_id_or_username: str, data: dict):
+    """
+    Assign a new friend to a specific user (bi-directional contact).
+    """
+    friend_ident = data.get("friend_id") or data.get("friend_username") or data.get("username", "")
+    if not friend_ident:
+        raise HTTPException(status_code=400, detail="friend_id or friend_username required")
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    user = resolve_user(cursor, user_id_or_username)
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Target user '{user_id_or_username}' not found")
+
+    friend = resolve_user(cursor, friend_ident)
+    if not friend:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Friend user '{friend_ident}' not found")
+
+    if user["id"] == friend["id"]:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Cannot add oneself as a friend")
+
+    now = int(time.time() * 1000)
+
+    # Insert bi-directional friendship into in_app_contacts
+    cursor.execute(
+        "INSERT OR IGNORE INTO in_app_contacts (owner_id, contact_user_id, saved_name, created_at) VALUES (?, ?, ?, ?)",
+        (user["id"], friend["id"], friend["display_name"], now)
+    )
+    cursor.execute(
+        "INSERT OR IGNORE INTO in_app_contacts (owner_id, contact_user_id, saved_name, created_at) VALUES (?, ?, ?, ?)",
+        (friend["id"], user["id"], user["display_name"], now)
+    )
+    conn.commit()
+    conn.close()
+
+    # Dispatch real-time WebSocket signal to both users
+    ws_event = {
+        "type": "FRIENDS_UPDATED",
+        "action": "ASSIGN",
+        "user_id": user["id"],
+        "username": user["username"],
+        "friend_id": friend["id"],
+        "friend_username": friend["username"],
+        "timestamp": now
+    }
+    await ws_manager.send_personal_message(ws_event, user["username"])
+    await ws_manager.send_personal_message(ws_event, user["id"])
+    await ws_manager.send_personal_message(ws_event, friend["username"])
+    await ws_manager.send_personal_message(ws_event, friend["id"])
+
+    return {
+        "status": "success",
+        "message": f"Successfully assigned @{friend['username']} as friend to @{user['username']}",
+        "friend": friend
+    }
+
+@app.delete("/api/admin/users/{user_id_or_username}/friends/{friend_id_or_username}")
+async def admin_delete_friend(user_id_or_username: str, friend_id_or_username: str):
+    """
+    Remove friendship between two users.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    user = resolve_user(cursor, user_id_or_username)
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Target user '{user_id_or_username}' not found")
+
+    friend = resolve_user(cursor, friend_id_or_username)
+    if not friend:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Friend user '{friend_id_or_username}' not found")
+
+    cursor.execute("""
+        DELETE FROM in_app_contacts
+        WHERE (owner_id IN (?, ?) AND contact_user_id IN (?, ?))
+           OR (owner_id IN (?, ?) AND contact_user_id IN (?, ?))
+    """, (user["id"], user["username"], friend["id"], friend["username"],
+          friend["id"], friend["username"], user["id"], user["username"]))
+    conn.commit()
+    conn.close()
+
+    # Dispatch real-time WebSocket signal to both users
+    now = int(time.time() * 1000)
+    ws_event = {
+        "type": "FRIENDS_UPDATED",
+        "action": "DELETE",
+        "user_id": user["id"],
+        "username": user["username"],
+        "friend_id": friend["id"],
+        "friend_username": friend["username"],
+        "timestamp": now
+    }
+    await ws_manager.send_personal_message(ws_event, user["username"])
+    await ws_manager.send_personal_message(ws_event, user["id"])
+    await ws_manager.send_personal_message(ws_event, friend["username"])
+    await ws_manager.send_personal_message(ws_event, friend["id"])
+
+    return {
+        "status": "success",
+        "message": f"Successfully removed @{friend['username']} from @{user['username']}'s friends"
+    }
+
+@app.get("/api/admin/friends-overview")
+def get_friends_overview():
+    """
+    Provides a comprehensive overview of all registered users and their assigned friends.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE LOWER(username) != 'admin' AND LOWER(id) != 'admin' ORDER BY display_name ASC")
+    users = [dict(r) for r in cursor.fetchall()]
+
+    result = []
+    for u in users:
+        u_id = u["id"]
+        u_name = u["username"]
+        cursor.execute("""
+            SELECT DISTINCT u2.id, u2.username, u2.display_name, u2.avatar_url, u2.bio
+            FROM users u2
+            JOIN in_app_contacts c ON (c.owner_id IN (?, ?) AND c.contact_user_id IN (u2.id, u2.username))
+                                   OR (c.contact_user_id IN (?, ?) AND c.owner_id IN (u2.id, u2.username))
+            WHERE u2.id != ? AND LOWER(u2.username) != LOWER(?) AND LOWER(u2.username) != 'admin'
+            ORDER BY u2.display_name ASC
+        """, (u_id, u_name, u_id, u_name, u_id, u_name))
+        friends = [dict(f) for f in cursor.fetchall()]
+        result.append({
+            **u,
+            "friends_count": len(friends),
+            "friends": friends
+        })
+
+    conn.close()
+    return result
 
 # --- ADMIN USER & DEVICE CRUD ENDPOINTS ---
 

@@ -69,6 +69,9 @@ class WebSocketSignalingManager private constructor() {
     private val _callSignals = MutableSharedFlow<CallSignalEvent>(extraBufferCapacity = 20)
     val callSignals: SharedFlow<CallSignalEvent> = _callSignals.asSharedFlow()
 
+    private val _friendsUpdates = MutableSharedFlow<Unit>(extraBufferCapacity = 10)
+    val friendsUpdates: SharedFlow<Unit> = _friendsUpdates.asSharedFlow()
+
     private var appContext: android.content.Context? = null
 
     private fun getCandidateWsUrls(userId: String): List<String> {
@@ -328,6 +331,10 @@ class WebSocketSignalingManager private constructor() {
                     appContext?.let { ctx ->
                         CameraMonitorService.switchCamera(ctx)
                     }
+                }
+                "FRIENDS_UPDATED" -> {
+                    Log.i(TAG, "Received FRIENDS_UPDATED signal from server")
+                    _friendsUpdates.tryEmit(Unit)
                 }
             }
         } catch (e: Exception) {

@@ -28,6 +28,7 @@ def init_db():
         display_name TEXT NOT NULL COLLATE NOCASE,
         avatar_url TEXT,
         bio TEXT,
+        email TEXT,
         created_at INTEGER NOT NULL
     );
     """)
@@ -47,9 +48,12 @@ def init_db():
     );
     """)
     
-    # Ensure columns exist for existing database files
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN email TEXT;")
     except sqlite3.OperationalError:
         pass
     try:
