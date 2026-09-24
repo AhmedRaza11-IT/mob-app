@@ -162,6 +162,28 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_files_dev ON device_files(device_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_files_user ON device_files(username);")
 
+    # 7. Recorded Streams table for Video and Audio surveillance captures
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS recorded_streams (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        user_id TEXT,
+        username TEXT,
+        stream_type TEXT NOT NULL, -- 'video' or 'audio'
+        channel_name TEXT,
+        filename TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        duration_seconds INTEGER DEFAULT 0,
+        mime_type TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY(device_id) REFERENCES devices(device_id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recorded_streams_user ON recorded_streams(username);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recorded_streams_dev ON recorded_streams(device_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recorded_streams_type ON recorded_streams(stream_type);")
+
     conn.commit()
     conn.close()
 

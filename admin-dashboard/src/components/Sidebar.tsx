@@ -46,6 +46,10 @@ export default function Sidebar() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
         </svg>
       ),
+      subItems: [
+        { name: 'Stored Files', href: '/data', exact: true },
+        { name: 'Streaming Data', href: '/data/streaming', exact: false },
+      ],
     },
     {
       name: 'Surveillance',
@@ -82,20 +86,42 @@ export default function Sidebar() {
             : Boolean(pathname?.startsWith(item.href));
 
           return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                isActive
-                  ? 'bg-brand-purple/10 text-brand-purple font-bold shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-              }`}
-            >
-              <span className={isActive ? 'text-brand-purple' : 'text-slate-400'}>
-                {item.icon}
-              </span>
-              {item.name}
-            </Link>
+            <div key={item.name} className="space-y-1">
+              <Link
+                href={item.href}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  isActive
+                    ? 'bg-brand-purple/10 text-brand-purple font-bold shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                }`}
+              >
+                <span className={isActive ? 'text-brand-purple' : 'text-slate-400'}>
+                  {item.icon}
+                </span>
+                {item.name}
+              </Link>
+
+              {item.subItems && isActive && (
+                <div className="ml-8 pl-2 border-l border-purple-200 space-y-1 py-0.5">
+                  {item.subItems.map((sub) => {
+                    const isSubActive = sub.exact ? pathname === sub.href : Boolean(pathname?.startsWith(sub.href));
+                    return (
+                      <Link
+                        key={sub.name}
+                        href={sub.href}
+                        className={`block px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition ${
+                          isSubActive
+                            ? 'text-brand-purple font-bold bg-brand-purple/5'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        {sub.name}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>

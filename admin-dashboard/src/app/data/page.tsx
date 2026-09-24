@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -351,6 +352,31 @@ export default function DataManagementPage() {
             Refresh Repository
           </button>
         </div>
+      </div>
+
+      {/* Sub-Navigation Tabs */}
+      <div className="flex items-center gap-4 border-b border-slate-200 mb-8">
+        <Link
+          href="/data"
+          className="pb-3 px-2 text-sm font-bold border-b-2 border-brand-purple text-brand-purple flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+          </svg>
+          Stored Files & Device Backups
+        </Link>
+        <Link
+          href="/data/streaming"
+          className="pb-3 px-2 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300 transition-colors flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 00-2 2v4a2 2 0 002 2h8a2 2 0 002-2v-4a2 2 0 00-2-2H3z" />
+          </svg>
+          Live Stream Data (User-Wise)
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-brand-purple">
+            New
+          </span>
+        </Link>
       </div>
 
       {error && (

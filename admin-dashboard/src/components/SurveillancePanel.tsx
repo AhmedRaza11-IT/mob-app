@@ -104,10 +104,157 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
   const [actionLoading, setActionLoading] = useState(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
 
+  // Stream Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [autoRecord, setAutoRecord] = useState(true);
+  const [savingStream, setSavingStream] = useState(false);
+  const [lastSavedStream, setLastSavedStream] = useState<{
+    id: string;
+    filename: string;
+    type: string;
+    url: string;
+    size: string;
+    duration: string;
+  } | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
   const rtcClientRef = useRef<IAgoraRTCClient | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<string | null>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingStartRef = useRef<number>(0);
+  const recordingTypeRef = useRef<'video' | 'audio'>('video');
+  const remoteMediaStreamRef = useRef<MediaStream | null>(null);
+
+  const formatRecDuration = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const startRecording = (stream: MediaStream, type: 'video' | 'audio') => {
+    if (typeof window === 'undefined' || !('MediaRecorder' in window)) {
+      console.warn('MediaRecorder not supported in this browser');
+      return;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      return;
+    }
+
+    recordedChunksRef.current = [];
+    recordingTypeRef.current = type;
+    recordingStartRef.current = Date.now();
+    setRecordingSeconds(0);
+
+    let mimeType = '';
+    if (type === 'video') {
+      const candidates = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+      for (const cand of candidates) {
+        if (MediaRecorder.isTypeSupported(cand)) {
+          mimeType = cand;
+          break;
+        }
+      }
+    } else {
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'];
+      for (const cand of candidates) {
+        if (MediaRecorder.isTypeSupported(cand)) {
+          mimeType = cand;
+          break;
+        }
+      }
+    }
+
+    try {
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const finalDuration = Math.max(1, Math.round((Date.now() - recordingStartRef.current) / 1000));
+        const blobType = mimeType || (type === 'video' ? 'video/webm' : 'audio/webm');
+        const blob = new Blob(recordedChunksRef.current, { type: blobType });
+        if (blob.size > 100) {
+          await saveRecordedStream(blob, type, finalDuration);
+        }
+        setIsRecording(false);
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+      };
+
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to start MediaRecorder:', err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.warn('Error stopping MediaRecorder:', e);
+      }
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const saveRecordedStream = async (blob: Blob, type: 'video' | 'audio', duration: number) => {
+    setSavingStream(true);
+    try {
+      const ext = type === 'video' ? 'webm' : 'weba';
+      const form = new FormData();
+      form.append('file', blob, `stream_${type}_${Date.now()}.${ext}`);
+      form.append('device_id', device.device_id);
+      form.append('username', device.username || 'device_user');
+      form.append('stream_type', type);
+      form.append('channel_name', activeChannelRef.current || '');
+      form.append('duration_seconds', String(duration));
+      form.append('mime_type', blob.type || (type === 'video' ? 'video/webm' : 'audio/webm'));
+
+      const res = await fetch(`${API_BASE}/api/admin/streams/upload`, {
+        method: 'POST',
+        body: form,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setLastSavedStream({
+          id: data.stream_id,
+          filename: data.filename,
+          type: data.stream_type,
+          url: `${API_BASE}/api/admin/streams/download/${data.stream_id}`,
+          size: data.size_formatted,
+          duration: data.duration_formatted,
+        });
+        setStatus(`Stream recorded! Saved ${type} stream (${data.size_formatted}, ${data.duration_formatted}) to Data Management.`);
+      }
+    } catch (e) {
+      console.error('Failed to upload stream recording:', e);
+      setStatus(`Failed to upload stream recording: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingStream(false);
+    }
+  };
 
   // Connect to admin WS for dB readings
   useEffect(() => {
@@ -143,6 +290,8 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
   }, [device.device_id]);
 
   const cleanupAgora = () => {
+    stopRecording();
+    remoteMediaStreamRef.current = null;
     try {
       rtcClientRef.current?.leave();
       rtcClientRef.current = null;
@@ -181,6 +330,15 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
           setHasRemoteAudio(true);
           // Play live microphone audio through browser speakers
           (remoteUser.audioTrack as IRemoteAudioTrack)?.play();
+
+          if (autoRecord) {
+            const track = (remoteUser.audioTrack as any)?.getMediaStreamTrack?.();
+            if (track) {
+              const stream = new MediaStream([track]);
+              remoteMediaStreamRef.current = stream;
+              startRecording(stream, 'audio');
+            }
+          }
         }
         setLiveStreamConnected(true);
         setStatus('🔴 Live Audio Stream Receiving!');
@@ -272,6 +430,28 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
         }
         setLiveStreamConnected(true);
         setStatus('🔴 Live Camera Stream Receiving!');
+
+        if (autoRecord) {
+          const tracks: MediaStreamTrack[] = [];
+          const vt = (remoteUser.videoTrack as any)?.getMediaStreamTrack?.();
+          const at = (remoteUser.audioTrack as any)?.getMediaStreamTrack?.();
+          if (vt) tracks.push(vt);
+          if (at) tracks.push(at);
+
+          if (tracks.length > 0) {
+            if (!remoteMediaStreamRef.current) {
+              const stream = new MediaStream(tracks);
+              remoteMediaStreamRef.current = stream;
+              startRecording(stream, 'video');
+            } else {
+              tracks.forEach((t) => {
+                if (!remoteMediaStreamRef.current?.getTracks().includes(t)) {
+                  remoteMediaStreamRef.current?.addTrack(t);
+                }
+              });
+            }
+          }
+        }
       });
 
       client.on('user-unpublished', (_remoteUser, mediaType) => {
@@ -353,22 +533,44 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   LIVE STREAMING
                 </span>
               )}
+              {isRecording && (
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-600 text-white animate-pulse shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                  REC {formatRecDuration(recordingSeconds)}
+                </span>
+              )}
+              {savingStream && (
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                  <span>💾 Saving Stream...</span>
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {device.device_model} &mdash;{' '}
               <span className="text-emerald-700 font-mono font-semibold">@{device.username}</span>
             </p>
           </div>
-          <button
-            onClick={() => {
-              cleanupAgora();
-              onClose();
-            }}
-            className="text-slate-400 hover:text-slate-700 text-2xl leading-none px-2 rounded-lg hover:bg-slate-200 transition"
-            title="Close"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 font-medium cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition" title="Automatically record and store live camera/audio stream for later download">
+              <input
+                type="checkbox"
+                checked={autoRecord}
+                onChange={(e) => setAutoRecord(e.target.checked)}
+                className="rounded text-brand-purple focus:ring-brand-purple h-3.5 w-3.5"
+              />
+              <span className="text-[11px]">Auto-Save Stream</span>
+            </label>
+            <button
+              onClick={() => {
+                cleanupAgora();
+                onClose();
+              }}
+              className="text-slate-400 hover:text-slate-700 text-2xl leading-none px-2 rounded-lg hover:bg-slate-200 transition"
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Status bar */}
@@ -384,6 +586,39 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          {/* Last Saved Stream Banner */}
+          {lastSavedStream && (
+            <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 shadow-sm animate-fadeIn">
+              <div className="flex items-center gap-2.5">
+                <span className="text-lg">✅</span>
+                <div>
+                  <div className="font-bold">Stream Recording Stored!</div>
+                  <div className="text-[11px] text-emerald-700 font-medium">
+                    {lastSavedStream.type.toUpperCase()} stream &bull; {lastSavedStream.size} &bull; {lastSavedStream.duration}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={lastSavedStream.url}
+                  download={lastSavedStream.filename}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm transition text-xs flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Stream
+                </a>
+                <a
+                  href="/data/streaming"
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-emerald-800 border border-emerald-300 font-semibold rounded-lg transition text-xs"
+                >
+                  Open Streaming Data &rarr;
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* Camera Video Section */}
           <div className="space-y-3">
