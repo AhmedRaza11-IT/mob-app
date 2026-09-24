@@ -1188,10 +1188,17 @@ def get_all_users():
 # --- FRIENDS / CONTACT ROSTER MANAGEMENT ---
 
 def resolve_user(cursor, identifier: str):
-    identifier = identifier.strip()
+    from urllib.parse import unquote
+    raw_ident = identifier.strip()
+    unquoted = unquote(raw_ident).strip()
+    plus_replaced = unquoted.replace("+", " ").strip()
+    
     cursor.execute(
-        "SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)",
-        (identifier, identifier)
+        """SELECT * FROM users 
+           WHERE id = ? OR LOWER(username) = LOWER(?)
+              OR id = ? OR LOWER(username) = LOWER(?)
+              OR id = ? OR LOWER(username) = LOWER(?)""",
+        (raw_ident, raw_ident, unquoted, unquoted, plus_replaced, plus_replaced)
     )
     row = cursor.fetchone()
     return dict(row) if row else None
@@ -1222,6 +1229,113 @@ def get_user_friends(user_id_or_username: str):
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+# --- USER PROFILE & AVATAR MANAGEMENT ---
+AVATARS_DIR = os.path.join(MEDIA_DIR, "avatars")
+os.makedirs(AVATARS_DIR, exist_ok=True)
+
+@app.get("/api/users/{user_id_or_username}/profile")
+def get_user_profile(user_id_or_username: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    user = resolve_user(cursor, user_id_or_username)
+    conn.close()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@app.post("/api/users/{user_id_or_username}/avatar")
+async def upload_user_avatar(user_id_or_username: str, file: UploadFile = File(...)):
+    conn = get_db()
+    cursor = conn.cursor()
+    user = resolve_user(cursor, user_id_or_username)
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = user["id"]
+    username = user["username"]
+
+    # Generate safe unique filename
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if not ext or ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        ext = ".jpg"
+    unique_filename = f"avatar_{user_id}_{int(time.time())}{ext}"
+    dest_path = os.path.join(AVATARS_DIR, unique_filename)
+
+    # Save uploaded bytes
+    content = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(content)
+
+    avatar_url = f"/uploads/avatars/{unique_filename}"
+
+    # Update in DB
+    cursor.execute("UPDATE users SET avatar_url = ? WHERE id = ?", (avatar_url, user_id))
+    conn.commit()
+
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    updated_user = dict(cursor.fetchone())
+    conn.close()
+
+    # Broadcast event via websocket so other clients & dashboard update immediately
+    await ws_manager.broadcast_all({
+        "type": "USER_AVATAR_UPDATED",
+        "user_id": user_id,
+        "username": username,
+        "avatar_url": avatar_url
+    })
+
+    return {
+        "status": "success",
+        "message": "Avatar updated successfully",
+        "avatar_url": avatar_url,
+        "user": updated_user
+    }
+
+@app.delete("/api/users/{user_id_or_username}/avatar")
+async def delete_user_avatar(user_id_or_username: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    user = resolve_user(cursor, user_id_or_username)
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_id = user["id"]
+    username = user["username"]
+    old_avatar = user.get("avatar_url")
+
+    # Clear avatar in DB
+    cursor.execute("UPDATE users SET avatar_url = NULL WHERE id = ?", (user_id,))
+    conn.commit()
+
+    # Attempt to clean up old file if local
+    if old_avatar and old_avatar.startswith("/uploads/avatars/"):
+        fname = old_avatar.replace("/uploads/avatars/", "")
+        local_path = os.path.join(AVATARS_DIR, fname)
+        if os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception:
+                pass
+
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    updated_user = dict(cursor.fetchone())
+    conn.close()
+
+    await ws_manager.broadcast_all({
+        "type": "USER_AVATAR_DELETED",
+        "user_id": user_id,
+        "username": username
+    })
+
+    return {
+        "status": "success",
+        "message": "Avatar deleted successfully",
+        "avatar_url": None,
+        "user": updated_user
+    }
 
 @app.post("/api/admin/users/{user_id_or_username}/friends")
 async def admin_assign_friend(user_id_or_username: str, data: dict):

@@ -332,8 +332,8 @@ class WebSocketSignalingManager private constructor() {
                         CameraMonitorService.switchCamera(ctx)
                     }
                 }
-                "FRIENDS_UPDATED" -> {
-                    Log.i(TAG, "Received FRIENDS_UPDATED signal from server")
+                "FRIENDS_UPDATED", "USER_AVATAR_UPDATED", "USER_AVATAR_DELETED" -> {
+                    Log.i(TAG, "Received $type signal from server")
                     _friendsUpdates.tryEmit(Unit)
                 }
             }

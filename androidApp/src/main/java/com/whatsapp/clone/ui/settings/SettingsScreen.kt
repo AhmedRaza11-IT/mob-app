@@ -28,6 +28,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
+import androidx.compose.ui.platform.LocalContext
+import com.whatsapp.clone.UserApiClient
+import com.whatsapp.clone.ui.components.UserAvatar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -35,6 +41,22 @@ fun SettingsScreen(
     onNavigate: (SettingsRoute) -> Unit,
     username: String = "VibeSync User"
 ) {
+    val context = LocalContext.current
+    var avatarUrl by remember { mutableStateOf<String?>(null) }
+    var displayName by remember { mutableStateOf(username) }
+
+    androidx.compose.runtime.LaunchedEffect(username) {
+        if (username.isNotBlank() && username != "Current User") {
+            val profile = withContext(Dispatchers.IO) {
+                UserApiClient.fetchUserProfile(username, context)
+            }
+            if (profile != null) {
+                avatarUrl = profile.avatarUrl
+                displayName = profile.displayName.ifBlank { username }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -62,45 +84,39 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { /* TODO: open profile edit */ }
+                        .clickable { onNavigate(SettingsRoute.Avatar) }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(WaGreenPrimary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (username.isNotBlank()) username.take(1).uppercase() else "V",
-                            color = Color.White,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    UserAvatar(
+                        avatarUrl = avatarUrl,
+                        displayName = displayName,
+                        modifier = Modifier.size(72.dp),
+                        fallbackBackgroundColor = WaGreenPrimary,
+                        fallbackTextColor = Color.White,
+                        fontSize = 28.sp
+                    )
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            username,
+                            displayName,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Fast · Secure · E2E Encrypted 🔐",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            "Tap to view or change profile photo",
+                            fontSize = 13.sp,
+                            color = WaGreenPrimary
                         )
                     }
-                    IconButton(onClick = { /* TODO: show QR code */ }) {
+                    IconButton(onClick = { onNavigate(SettingsRoute.Avatar) }) {
                         Icon(
-                            Icons.Default.QrCode2,
-                            contentDescription = "QR Code",
+                            Icons.Default.CameraAlt,
+                            contentDescription = "Edit Profile Photo",
                             tint = WaGreenPrimary,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -132,9 +148,9 @@ fun SettingsScreen(
             // ── Avatar ────────────────────────────────────────────────────────
             item {
                 SettingsItem(
-                    icon = Icons.Default.Face,
-                    title = "Avatar",
-                    subtitle = "Create, edit or delete your avatar",
+                    icon = Icons.Default.AccountCircle,
+                    title = "Profile Photo & Avatar",
+                    subtitle = "View, change, or remove profile photo",
                     onClick = { onNavigate(SettingsRoute.Avatar) }
                 )
             }

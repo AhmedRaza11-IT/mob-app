@@ -82,7 +82,10 @@ fun SettingsNavHost(
             )
         }
         composable(SettingsRoute.Avatar.route) {
-            AvatarScreen(onBack = { navController.popBackStack() })
+            AvatarScreen(
+                onBack = { navController.popBackStack() },
+                username = username
+            )
         }
         composable(SettingsRoute.Chats.route) {
             ChatsScreen(

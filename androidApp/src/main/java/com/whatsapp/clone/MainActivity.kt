@@ -67,6 +67,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.whatsapp.clone.ui.settings.SettingsViewModel
 import com.whatsapp.clone.ui.settings.data.AppTheme
 import com.whatsapp.clone.ui.settings.navigation.SettingsNavHost
+import com.whatsapp.clone.ui.components.UserAvatar
+import com.whatsapp.clone.ui.components.AvatarCache
 
 const val AGORA_APP_ID = "e63a3e4f21124b659d8eeaef92f367c2"
 
@@ -95,7 +97,8 @@ object UserApiClient {
                                 id = obj.optString("id", System.currentTimeMillis().toString()),
                                 username = obj.optString("username"),
                                 displayName = obj.optString("display_name"),
-                                bio = obj.optString("bio", "VibeSync User")
+                                bio = obj.optString("bio", "VibeSync User"),
+                                avatarUrl = obj.optString("avatar_url").takeIf { it.isNotBlank() }
                             )
                         )
                     }
@@ -111,11 +114,7 @@ object UserApiClient {
         if (cleanIdent.isBlank() || cleanIdent.equals("Current User", ignoreCase = true)) {
             return@withContext emptyList()
         }
-        val encoded = try {
-            java.net.URLEncoder.encode(cleanIdent, "UTF-8")
-        } catch (_: Exception) {
-            cleanIdent
-        }
+        val encoded = android.net.Uri.encode(cleanIdent)
         val hosts = getCandidateHosts(context)
         for (host in hosts) {
             try {
@@ -137,7 +136,8 @@ object UserApiClient {
                                 id = obj.optString("id", System.currentTimeMillis().toString()),
                                 username = obj.optString("username"),
                                 displayName = obj.optString("display_name"),
-                                bio = obj.optString("bio", "VibeSync Friend")
+                                bio = obj.optString("bio", "VibeSync Friend"),
+                                avatarUrl = obj.optString("avatar_url").takeIf { it.isNotBlank() }
                             )
                         )
                     }
@@ -171,7 +171,8 @@ object UserApiClient {
                                 id = obj.optString("id", System.currentTimeMillis().toString()),
                                 username = obj.optString("username"),
                                 displayName = obj.optString("display_name"),
-                                bio = obj.optString("bio", "VibeSync User")
+                                bio = obj.optString("bio", "VibeSync User"),
+                                avatarUrl = obj.optString("avatar_url").takeIf { it.isNotBlank() }
                             )
                         )
                     }
@@ -207,7 +208,8 @@ object UserApiClient {
                     id = obj.optString("id", System.currentTimeMillis().toString()),
                     username = obj.optString("username"),
                     displayName = obj.optString("display_name"),
-                    bio = obj.optString("bio", bio)
+                    bio = obj.optString("bio", bio),
+                    avatarUrl = obj.optString("avatar_url").takeIf { it.isNotBlank() }
                 )
             } else null
         } catch (e: Exception) {
@@ -215,12 +217,113 @@ object UserApiClient {
         }
     }
 
+    suspend fun fetchUserProfile(usernameOrId: String, context: Context? = null): UserUI? = withContext(Dispatchers.IO) {
+        val cleanIdent = usernameOrId.trim()
+        if (cleanIdent.isBlank() || cleanIdent.equals("Current User", ignoreCase = true)) return@withContext null
+        val encoded = android.net.Uri.encode(cleanIdent)
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
+            try {
+                val url = URL("$host/api/users/$encoded/profile")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3000
+                    readTimeout = 3000
+                }
+                if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = JSONObject(text)
+                    return@withContext UserUI(
+                        id = obj.optString("id"),
+                        username = obj.optString("username"),
+                        displayName = obj.optString("display_name"),
+                        avatarUrl = obj.optString("avatar_url").takeIf { it.isNotBlank() },
+                        bio = obj.optString("bio", "Available | Powered by VibeSync")
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+        null
+    }
+
+    suspend fun uploadAvatar(usernameOrId: String, imageBytes: ByteArray, mimeType: String = "image/jpeg", context: Context? = null): String? = withContext(Dispatchers.IO) {
+        val cleanIdent = usernameOrId.trim()
+        val encoded = android.net.Uri.encode(cleanIdent)
+        val hosts = getCandidateHosts(context)
+        val boundary = "Boundary-" + System.currentTimeMillis()
+        val lineEnd = "\r\n"
+        val twoHyphens = "--"
+
+        for (host in hosts) {
+            try {
+                val url = URL("$host/api/users/$encoded/avatar")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doInput = true
+                    doOutput = true
+                    useCaches = false
+                    connectTimeout = 3000
+                    readTimeout = 5000
+                    setRequestProperty("Connection", "Keep-Alive")
+                    setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                }
+
+                conn.outputStream.use { dos ->
+                    dos.write((twoHyphens + boundary + lineEnd).toByteArray())
+                    dos.write(("Content-Disposition: form-data; name=\"file\"; filename=\"avatar.jpg\"" + lineEnd).toByteArray())
+                    dos.write(("Content-Type: $mimeType" + lineEnd).toByteArray())
+                    dos.write(lineEnd.toByteArray())
+                    dos.write(imageBytes)
+                    dos.write(lineEnd.toByteArray())
+                    dos.write((twoHyphens + boundary + twoHyphens + lineEnd).toByteArray())
+                    dos.flush()
+                }
+
+                if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    val obj = JSONObject(text)
+                    return@withContext obj.optString("avatar_url").takeIf { it.isNotBlank() }
+                } else {
+                    val errText = try { conn.errorStream?.bufferedReader()?.use { it.readText() } } catch (_: Exception) { null }
+                    android.util.Log.e("UserApiClient", "uploadAvatar non-200 code ${conn.responseCode} on $host: $errText")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("UserApiClient", "uploadAvatar failed on $host: ${e.message}")
+            }
+        }
+        null
+    }
+
+    suspend fun deleteAvatar(usernameOrId: String, context: Context? = null): Boolean = withContext(Dispatchers.IO) {
+        val cleanIdent = usernameOrId.trim()
+        val encoded = android.net.Uri.encode(cleanIdent)
+        val hosts = getCandidateHosts(context)
+        for (host in hosts) {
+            try {
+                val url = URL("$host/api/users/$encoded/avatar")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "DELETE"
+                    connectTimeout = 3000
+                    readTimeout = 3000
+                }
+                if (conn.responseCode == 200) {
+                    NetworkConfig.setWorkingBaseUrl(host, context)
+                    return@withContext true
+                }
+            } catch (_: Exception) {}
+        }
+        false
+    }
+
     fun getCandidateHosts(context: Context? = null): List<String> {
         val currentBase = NetworkConfig.getBaseUrl()
-        val hosts = NetworkConfig.buildCandidateHosts(context).toMutableList()
-        if (!hosts.contains(currentBase)) {
-            hosts.add(0, currentBase)
-        }
+        val hosts = mutableListOf<String>()
+        if (currentBase.isNotBlank()) hosts.add(currentBase)
+        hosts.add("http://127.0.0.1:8000")
+        hosts.add("http://192.168.18.78:8000")
+        hosts.addAll(NetworkConfig.buildCandidateHosts(context))
         return hosts.distinct()
     }
 
@@ -618,7 +721,8 @@ data class UserUI(
     val displayName: String = "",
     val bio: String = "",
     val lastMessagePreview: String = "",
-    val isBanned: Boolean = false
+    val isBanned: Boolean = false,
+    val avatarUrl: String? = null
 )
 
 data class MessageUI(
@@ -726,6 +830,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     val partnerId = conv.optString("partner_id")
                     val partnerUsername = conv.optString("partner_username", partnerId)
                     val partnerName = conv.optString("partner_display_name", partnerUsername)
+                    val avatar = conv.optString("partner_avatar_url").takeIf { it.isNotBlank() } ?: conv.optString("avatar_url").takeIf { it.isNotBlank() }
                     val preview = conv.optString("last_message_preview", "")
                     if (partnerId.isNotBlank()) {
                         val partnerUser = UserUI(
@@ -733,7 +838,8 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                             username = partnerUsername,
                             displayName = partnerName,
                             bio = "Available | Powered by VibeSync",
-                            lastMessagePreview = preview
+                            lastMessagePreview = preview,
+                            avatarUrl = avatar
                         )
                         realUsers.add(partnerUser)
 
@@ -1110,12 +1216,37 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
             if (!isSettingsOpen) {
                 TopAppBar(
                     title = { 
-                        Text(
-                            if (isAdminMode) "VibeSync Admin Portal" 
-                            else (activeChatPartner?.displayName ?: "VibeSync"), 
-                            color = Color.White, 
-                            fontWeight = FontWeight.Bold
-                        ) 
+                        if (isAdminMode) {
+                            Text("VibeSync Admin Portal", color = Color.White, fontWeight = FontWeight.Bold)
+                        } else if (activeChatPartner != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                UserAvatar(
+                                    avatarUrl = activeChatPartner?.avatarUrl,
+                                    displayName = activeChatPartner?.displayName ?: "",
+                                    modifier = Modifier.size(36.dp),
+                                    fallbackBackgroundColor = WaGreenPrimary,
+                                    fontSize = 15.sp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        activeChatPartner?.displayName ?: "VibeSync",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        "@${activeChatPartner?.username}",
+                                        color = Color(0xFFD1FAE5),
+                                        fontSize = 11.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        } else {
+                            Text("VibeSync", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isAdminMode) Color(0xFF1E293B) else WaGreenDark),
                     navigationIcon = {
@@ -1467,15 +1598,14 @@ fun ChatsTabScreen(
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(WaGreenPrimary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(user.displayName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    }
+                    UserAvatar(
+                        avatarUrl = user.avatarUrl,
+                        displayName = user.displayName,
+                        modifier = Modifier.size(48.dp),
+                        fallbackBackgroundColor = WaGreenPrimary,
+                        fallbackTextColor = Color.White,
+                        fontSize = 20.sp
+                    )
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(user.displayName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -1629,15 +1759,14 @@ fun GlobalSearchTabScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(WaGreenDark),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(user.displayName.take(1), color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                        UserAvatar(
+                            avatarUrl = user.avatarUrl,
+                            displayName = user.displayName,
+                            modifier = Modifier.size(44.dp),
+                            fallbackBackgroundColor = WaGreenDark,
+                            fallbackTextColor = Color.White,
+                            fontSize = 18.sp
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(user.displayName, fontWeight = FontWeight.Bold)
