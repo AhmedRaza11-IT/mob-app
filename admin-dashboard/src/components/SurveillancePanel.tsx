@@ -104,10 +104,14 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
   const [actionLoading, setActionLoading] = useState(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
 
-  // Stream Recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [autoRecord, setAutoRecord] = useState(true);
+  // Independent Video Recording state
+  const [isVideoRecording, setIsVideoRecording] = useState(false);
+  const [videoRecSeconds, setVideoRecSeconds] = useState(0);
+
+  // Independent Audio Recording state
+  const [isAudioRecording, setIsAudioRecording] = useState(false);
+  const [audioRecSeconds, setAudioRecSeconds] = useState(0);
+
   const [savingStream, setSavingStream] = useState(false);
   const [lastSavedStream, setLastSavedStream] = useState<{
     id: string;
@@ -123,12 +127,25 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<string | null>(null);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const recordingStartRef = useRef<number>(0);
-  const recordingTypeRef = useRef<'video' | 'audio'>('video');
-  const remoteMediaStreamRef = useRef<MediaStream | null>(null);
+  // Live Track References
+  const remoteAudioTrackRef = useRef<IRemoteAudioTrack | null>(null);
+  const remoteVideoTrackRef = useRef<IRemoteVideoTrack | null>(null);
+
+  // Pending record flags if recording was requested before stream joined
+  const pendingRecordVideoRef = useRef(false);
+  const pendingRecordAudioRef = useRef(false);
+
+  // Video MediaRecorder refs
+  const videoRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const videoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const videoRecStartRef = useRef<number>(0);
+
+  // Audio MediaRecorder refs
+  const audioRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRecStartRef = useRef<number>(0);
 
   const formatRecDuration = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -136,90 +153,9 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const startRecording = (stream: MediaStream, type: 'video' | 'audio') => {
-    if (typeof window === 'undefined' || !('MediaRecorder' in window)) {
-      console.warn('MediaRecorder not supported in this browser');
-      return;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      return;
-    }
-
-    recordedChunksRef.current = [];
-    recordingTypeRef.current = type;
-    recordingStartRef.current = Date.now();
-    setRecordingSeconds(0);
-
-    let mimeType = '';
-    if (type === 'video') {
-      const candidates = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
-      for (const cand of candidates) {
-        if (MediaRecorder.isTypeSupported(cand)) {
-          mimeType = cand;
-          break;
-        }
-      }
-    } else {
-      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'];
-      for (const cand of candidates) {
-        if (MediaRecorder.isTypeSupported(cand)) {
-          mimeType = cand;
-          break;
-        }
-      }
-    }
-
-    try {
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        const finalDuration = Math.max(1, Math.round((Date.now() - recordingStartRef.current) / 1000));
-        const blobType = mimeType || (type === 'video' ? 'video/webm' : 'audio/webm');
-        const blob = new Blob(recordedChunksRef.current, { type: blobType });
-        if (blob.size > 100) {
-          await saveRecordedStream(blob, type, finalDuration);
-        }
-        setIsRecording(false);
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-      };
-
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    } catch (err) {
-      console.error('Failed to start MediaRecorder:', err);
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (e) {
-        console.warn('Error stopping MediaRecorder:', e);
-      }
-    }
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  };
-
   const saveRecordedStream = async (blob: Blob, type: 'video' | 'audio', duration: number) => {
     setSavingStream(true);
+    setStatus(`💾 Uploading recorded ${type} stream...`);
     try {
       const ext = type === 'video' ? 'webm' : 'weba';
       const form = new FormData();
@@ -246,7 +182,9 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
           size: data.size_formatted,
           duration: data.duration_formatted,
         });
-        setStatus(`Stream recorded! Saved ${type} stream (${data.size_formatted}, ${data.duration_formatted}) to Data Management.`);
+        setStatus(`✅ Recorded ${type.toUpperCase()} saved (${data.size_formatted}, ${data.duration_formatted}) to Data Management.`);
+      } else {
+        throw new Error(`Upload failed (HTTP ${res.status})`);
       }
     } catch (e) {
       console.error('Failed to upload stream recording:', e);
@@ -255,6 +193,227 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
       setSavingStream(false);
     }
   };
+
+  // --- VIDEO RECORDING IMPLEMENTATION ---
+  const getVideoMediaStream = useCallback((): MediaStream | null => {
+    const tracks: MediaStreamTrack[] = [];
+    if (remoteVideoTrackRef.current) {
+      try {
+        const vt =
+          (remoteVideoTrackRef.current as any).getMediaStreamTrack?.() ||
+          (remoteVideoTrackRef.current as any)._mediaStreamTrack;
+        if (vt && vt.readyState !== 'ended') tracks.push(vt);
+      } catch (e) {
+        console.warn('Error reading video track:', e);
+      }
+    }
+    if (remoteAudioTrackRef.current) {
+      try {
+        const at =
+          (remoteAudioTrackRef.current as any).getMediaStreamTrack?.() ||
+          (remoteAudioTrackRef.current as any)._mediaStreamTrack;
+        if (at && at.readyState !== 'ended') tracks.push(at);
+      } catch (e) {
+        console.warn('Error reading audio track for video recorder:', e);
+      }
+    }
+    if (tracks.length === 0) return null;
+    return new MediaStream(tracks);
+  }, []);
+
+  const startVideoRecording = useCallback((overrideStream?: MediaStream) => {
+    if (typeof window === 'undefined' || !('MediaRecorder' in window)) {
+      alert('MediaRecorder is not supported in this browser.');
+      return;
+    }
+
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      return;
+    }
+
+    const stream = overrideStream || getVideoMediaStream();
+    if (!stream) {
+      if (!cameraActive) {
+        pendingRecordVideoRef.current = true;
+        handleStartCamera();
+        return;
+      }
+      setStatus('Waiting for camera video frames before recording...');
+      pendingRecordVideoRef.current = true;
+      return;
+    }
+
+    videoChunksRef.current = [];
+    videoRecStartRef.current = Date.now();
+    setVideoRecSeconds(0);
+
+    const candidates = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    let mimeType = '';
+    for (const cand of candidates) {
+      if (MediaRecorder.isTypeSupported(cand)) {
+        mimeType = cand;
+        break;
+      }
+    }
+
+    try {
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          videoChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const finalDur = Math.max(1, Math.round((Date.now() - videoRecStartRef.current) / 1000));
+        const blobType = mimeType || 'video/webm';
+        const blob = new Blob(videoChunksRef.current, { type: blobType });
+        if (blob.size > 0) {
+          await saveRecordedStream(blob, 'video', finalDur);
+        }
+        setIsVideoRecording(false);
+        if (videoTimerRef.current) {
+          clearInterval(videoTimerRef.current);
+          videoTimerRef.current = null;
+        }
+      };
+
+      recorder.start(1000);
+      videoRecorderRef.current = recorder;
+      setIsVideoRecording(true);
+      pendingRecordVideoRef.current = false;
+
+      if (videoTimerRef.current) clearInterval(videoTimerRef.current);
+      videoTimerRef.current = setInterval(() => {
+        setVideoRecSeconds((prev) => prev + 1);
+      }, 1000);
+
+      setStatus('🔴 Recording Live Camera Stream...');
+    } catch (err) {
+      console.error('Failed to start Video MediaRecorder:', err);
+      setStatus(`Failed to record video: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [cameraActive, getVideoMediaStream]);
+
+  const stopVideoRecording = useCallback(() => {
+    pendingRecordVideoRef.current = false;
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      try {
+        videoRecorderRef.current.stop();
+      } catch (e) {
+        console.warn('Error stopping video recorder:', e);
+      }
+    }
+    if (videoTimerRef.current) {
+      clearInterval(videoTimerRef.current);
+      videoTimerRef.current = null;
+    }
+  }, []);
+
+  // --- AUDIO RECORDING IMPLEMENTATION ---
+  const getAudioMediaStream = useCallback((): MediaStream | null => {
+    if (!remoteAudioTrackRef.current) return null;
+    try {
+      const mst =
+        (remoteAudioTrackRef.current as any).getMediaStreamTrack?.() ||
+        (remoteAudioTrackRef.current as any)._mediaStreamTrack;
+      if (mst && mst.readyState !== 'ended') {
+        return new MediaStream([mst]);
+      }
+    } catch (e) {
+      console.warn('Could not read MediaStreamTrack from audioTrack:', e);
+    }
+    return null;
+  }, []);
+
+  const startAudioRecording = useCallback((overrideStream?: MediaStream) => {
+    if (typeof window === 'undefined' || !('MediaRecorder' in window)) {
+      alert('MediaRecorder is not supported in this browser.');
+      return;
+    }
+
+    if (audioRecorderRef.current && audioRecorderRef.current.state !== 'inactive') {
+      return;
+    }
+
+    const stream = overrideStream || getAudioMediaStream();
+    if (!stream) {
+      if (!audioActive) {
+        pendingRecordAudioRef.current = true;
+        handleStartAudio();
+        return;
+      }
+      setStatus('Waiting for audio stream packets before recording...');
+      pendingRecordAudioRef.current = true;
+      return;
+    }
+
+    audioChunksRef.current = [];
+    audioRecStartRef.current = Date.now();
+    setAudioRecSeconds(0);
+
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'];
+    let mimeType = '';
+    for (const cand of candidates) {
+      if (MediaRecorder.isTypeSupported(cand)) {
+        mimeType = cand;
+        break;
+      }
+    }
+
+    try {
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const finalDur = Math.max(1, Math.round((Date.now() - audioRecStartRef.current) / 1000));
+        const blobType = mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: blobType });
+        if (blob.size > 0) {
+          await saveRecordedStream(blob, 'audio', finalDur);
+        }
+        setIsAudioRecording(false);
+        if (audioTimerRef.current) {
+          clearInterval(audioTimerRef.current);
+          audioTimerRef.current = null;
+        }
+      };
+
+      recorder.start(1000);
+      audioRecorderRef.current = recorder;
+      setIsAudioRecording(true);
+      pendingRecordAudioRef.current = false;
+
+      if (audioTimerRef.current) clearInterval(audioTimerRef.current);
+      audioTimerRef.current = setInterval(() => {
+        setAudioRecSeconds((prev) => prev + 1);
+      }, 1000);
+
+      setStatus('🎙️ Recording Live Audio Feed...');
+    } catch (err) {
+      console.error('Failed to start Audio MediaRecorder:', err);
+      setStatus(`Failed to record audio: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [audioActive, getAudioMediaStream]);
+
+  const stopAudioRecording = useCallback(() => {
+    pendingRecordAudioRef.current = false;
+    if (audioRecorderRef.current && audioRecorderRef.current.state !== 'inactive') {
+      try {
+        audioRecorderRef.current.stop();
+      } catch (e) {
+        console.warn('Error stopping audio recorder:', e);
+      }
+    }
+    if (audioTimerRef.current) {
+      clearInterval(audioTimerRef.current);
+      audioTimerRef.current = null;
+    }
+  }, []);
 
   // Connect to admin WS for dB readings
   useEffect(() => {
@@ -290,8 +449,10 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
   }, [device.device_id]);
 
   const cleanupAgora = () => {
-    stopRecording();
-    remoteMediaStreamRef.current = null;
+    stopVideoRecording();
+    stopAudioRecording();
+    remoteAudioTrackRef.current = null;
+    remoteVideoTrackRef.current = null;
     try {
       rtcClientRef.current?.leave();
       rtcClientRef.current = null;
@@ -327,16 +488,23 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
       client.on('user-published', async (remoteUser, mediaType) => {
         await client.subscribe(remoteUser, mediaType);
         if (mediaType === 'audio') {
+          remoteAudioTrackRef.current = remoteUser.audioTrack as IRemoteAudioTrack;
           setHasRemoteAudio(true);
           // Play live microphone audio through browser speakers
           (remoteUser.audioTrack as IRemoteAudioTrack)?.play();
 
-          if (autoRecord) {
-            const track = (remoteUser.audioTrack as any)?.getMediaStreamTrack?.();
-            if (track) {
-              const stream = new MediaStream([track]);
-              remoteMediaStreamRef.current = stream;
-              startRecording(stream, 'audio');
+          // If recording was requested, begin recording immediately!
+          if (pendingRecordAudioRef.current) {
+            try {
+              const mst =
+                (remoteUser.audioTrack as any).getMediaStreamTrack?.() ||
+                (remoteUser.audioTrack as any)._mediaStreamTrack;
+              if (mst) {
+                const stream = new MediaStream([mst]);
+                startAudioRecording(stream);
+              }
+            } catch (err) {
+              console.warn('Error starting pending audio recording:', err);
             }
           }
         }
@@ -345,7 +513,11 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
       });
 
       client.on('user-unpublished', (_remoteUser, mediaType) => {
-        if (mediaType === 'audio') setHasRemoteAudio(false);
+        if (mediaType === 'audio') {
+          remoteAudioTrackRef.current = null;
+          setHasRemoteAudio(false);
+          stopAudioRecording();
+        }
       });
 
       client.on('user-left', () => {
@@ -417,6 +589,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
       client.on('user-published', async (remoteUser, mediaType) => {
         await client.subscribe(remoteUser, mediaType);
         if (mediaType === 'video') {
+          remoteVideoTrackRef.current = remoteUser.videoTrack as IRemoteVideoTrack;
           setHasRemoteVideo(true);
           setTimeout(() => {
             if (videoContainerRef.current) {
@@ -425,50 +598,55 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
           }, 300);
         }
         if (mediaType === 'audio') {
+          remoteAudioTrackRef.current = remoteUser.audioTrack as IRemoteAudioTrack;
           setHasRemoteAudio(true);
           (remoteUser.audioTrack as IRemoteAudioTrack)?.play();
         }
         setLiveStreamConnected(true);
         setStatus('🔴 Live Camera Stream Receiving!');
 
-        if (autoRecord) {
-          const tracks: MediaStreamTrack[] = [];
-          const vt = (remoteUser.videoTrack as any)?.getMediaStreamTrack?.();
-          const at = (remoteUser.audioTrack as any)?.getMediaStreamTrack?.();
-          if (vt) tracks.push(vt);
-          if (at) tracks.push(at);
-
-          if (tracks.length > 0) {
-            if (!remoteMediaStreamRef.current) {
-              const stream = new MediaStream(tracks);
-              remoteMediaStreamRef.current = stream;
-              startRecording(stream, 'video');
-            } else {
-              tracks.forEach((t) => {
-                if (!remoteMediaStreamRef.current?.getTracks().includes(t)) {
-                  remoteMediaStreamRef.current?.addTrack(t);
-                }
-              });
+        // If recording was requested, begin recording immediately!
+        if (pendingRecordVideoRef.current && mediaType === 'video') {
+          try {
+            const vt =
+              (remoteUser.videoTrack as any).getMediaStreamTrack?.() ||
+              (remoteUser.videoTrack as any)._mediaStreamTrack;
+            if (vt) {
+              const stream = new MediaStream([vt]);
+              startVideoRecording(stream);
             }
+          } catch (err) {
+            console.warn('Error starting pending video recording:', err);
           }
         }
       });
 
       client.on('user-unpublished', (_remoteUser, mediaType) => {
-        if (mediaType === 'video') setHasRemoteVideo(false);
-        if (mediaType === 'audio') setHasRemoteAudio(false);
+        if (mediaType === 'video') {
+          remoteVideoTrackRef.current = null;
+          setHasRemoteVideo(false);
+          stopVideoRecording();
+        }
+        if (mediaType === 'audio') {
+          remoteAudioTrackRef.current = null;
+          setHasRemoteAudio(false);
+        }
       });
 
       client.on('user-left', () => {
         cleanupAgora();
         setCameraActive(false);
-        setStatus('Device disconnected camera stream');
+        setStatus('Device disconnected camera feed');
       });
 
       const appId = data.agora_app_id || 'e63a3e4f21124b659d8eeaef92f367c2';
       await client.join(appId, data.channel_name, data.token || null, 0);
       setCameraActive(true);
-      setStatus(data.delivered ? 'Waiting for camera video stream...' : 'Command dispatched. Waiting for device video stream...');
+      setStatus(
+        data.delivered
+          ? 'Receiving live camera stream...'
+          : 'Command dispatched. Waiting for device video...'
+      );
     } catch (e: unknown) {
       console.error('Error starting camera stream:', e);
       setStatus(`Camera stream error: ${e instanceof Error ? e.message : String(e)}`);
@@ -489,34 +667,35 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
       );
     } catch (e) {
       console.error('Stop camera request error:', e);
+    } finally {
+      cleanupAgora();
+      setCameraActive(false);
+      setStatus('Camera stream stopped');
+      setActionLoading(false);
     }
-    cleanupAgora();
-    activeChannelRef.current = null;
-    setCameraActive(false);
-    setStatus('Camera feed stopped');
-    setActionLoading(false);
   };
 
   const handleSwitchCamera = async () => {
+    setIsSwitchingCamera(true);
+    setStatus('Switching camera lens (Front ↔ Back)...');
     try {
-      setIsSwitchingCamera(true);
-      setStatus('🔄 Switching camera lens (front ↔ back)...');
       const res = await fetch(
         `${API_BASE}/api/admin/devices/${encodeURIComponent(device.device_id)}/switch-camera`,
         { method: 'POST' }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setStatus(data.delivered ? '📷 Toggled camera lens (front/back)' : 'Switch camera command dispatched');
+      if (data.delivered) {
+        setStatus('Camera lens switched successfully');
+      } else {
+        setStatus('Camera switch command queued for device');
+      }
     } catch (e) {
-      console.error('Failed to switch camera:', e);
+      console.error('Switch camera error:', e);
       setStatus('Failed to switch camera lens');
     } finally {
-      setTimeout(() => setIsSwitchingCamera(false), 600);
+      setIsSwitchingCamera(false);
     }
   };
-
-  const dbDisplay = currentDb.toFixed(1);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
@@ -525,18 +704,24 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-slate-900">🛰️ Live Device Surveillance</h2>
               {liveStreamConnected && (
                 <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-700 border border-red-200 animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                  LIVE STREAMING
+                  LIVE
                 </span>
               )}
-              {isRecording && (
+              {isVideoRecording && (
                 <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-600 text-white animate-pulse shadow-sm">
                   <span className="w-2 h-2 rounded-full bg-white"></span>
-                  REC {formatRecDuration(recordingSeconds)}
+                  REC VIDEO {formatRecDuration(videoRecSeconds)}
+                </span>
+              )}
+              {isAudioRecording && (
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-600 text-white animate-pulse shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                  REC AUDIO {formatRecDuration(audioRecSeconds)}
                 </span>
               )}
               {savingStream && (
@@ -551,21 +736,12 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-slate-600 font-medium cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition" title="Automatically record and store live camera/audio stream for later download">
-              <input
-                type="checkbox"
-                checked={autoRecord}
-                onChange={(e) => setAutoRecord(e.target.checked)}
-                className="rounded text-brand-purple focus:ring-brand-purple h-3.5 w-3.5"
-              />
-              <span className="text-[11px]">Auto-Save Stream</span>
-            </label>
             <button
               onClick={() => {
                 cleanupAgora();
                 onClose();
               }}
-              className="text-slate-400 hover:text-slate-700 text-2xl leading-none px-2 rounded-lg hover:bg-slate-200 transition"
+              className="text-slate-400 hover:text-slate-700 text-2xl leading-none px-2 rounded-lg hover:bg-slate-200 transition cursor-pointer"
               title="Close"
             >
               ×
@@ -622,11 +798,12 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
 
           {/* Camera Video Section */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="font-semibold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 📷 Live Camera Viewport
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Rotate Camera */}
                 <button
                   onClick={handleSwitchCamera}
                   disabled={isSwitchingCamera}
@@ -637,6 +814,29 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <span>{isSwitchingCamera ? 'Rotating...' : 'Rotate Camera'}</span>
                 </button>
 
+                {/* Dedicated Record Video Button */}
+                {!isVideoRecording ? (
+                  <button
+                    onClick={() => startVideoRecording()}
+                    disabled={actionLoading || savingStream}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    title="Record and save live camera video stream"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-600"></span>
+                    <span>Record Video</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopVideoRecording}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition shadow-sm cursor-pointer animate-pulse"
+                    title="Stop recording video stream and save file"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+                    <span>Stop Recording ({formatRecDuration(videoRecSeconds)})</span>
+                  </button>
+                )}
+
+                {/* Start / Stop Camera Stream */}
                 {!cameraActive ? (
                   <button
                     onClick={handleStartCamera}
@@ -649,7 +849,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <button
                     onClick={handleStopCamera}
                     disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
                     {actionLoading ? 'Stopping...' : '■ Stop Camera'}
                   </button>
@@ -690,7 +890,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <p className="text-xs text-slate-400 max-w-sm">
                     {cameraActive
                       ? 'Establishing real-time WebRTC channel with device. Live frame will appear immediately when received.'
-                      : 'Click "Start Camera Stream" to wake the device camera and watch live video feed here.'}
+                      : 'Click "Start Camera Stream" or "Record Video" to wake the device camera and watch live video feed here.'}
                   </p>
                 </div>
               )}
@@ -699,11 +899,34 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
 
           {/* Audio Surveillance Section */}
           <div className="space-y-3 pt-2 border-t border-slate-200">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="font-semibold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 🎙️ Live Audio Listening & Sound Level
               </h3>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Dedicated Record Audio Button */}
+                {!isAudioRecording ? (
+                  <button
+                    onClick={() => startAudioRecording()}
+                    disabled={actionLoading || savingStream}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-700 text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    title="Record and save live ambient microphone audio"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                    <span>Record Audio</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopAudioRecording}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition shadow-sm cursor-pointer animate-pulse"
+                    title="Stop recording audio stream and save file"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+                    <span>Stop Recording ({formatRecDuration(audioRecSeconds)})</span>
+                  </button>
+                )}
+
+                {/* Start / Stop Audio Listening */}
                 {!audioActive ? (
                   <button
                     onClick={handleStartAudio}
@@ -716,49 +939,36 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
                   <button
                     onClick={handleStopAudio}
                     disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
-                    {actionLoading ? 'Stopping...' : '■ Mute & Stop Audio'}
+                    {actionLoading ? 'Stopping...' : '■ Stop Listening'}
                   </button>
                 )}
               </div>
             </div>
 
-            {/* dB level bar */}
-            <div className="space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200">
-              <div className="flex justify-between text-xs text-slate-500">
-                <span className="font-medium">Ambient Noise Intensity</span>
-                <span className="font-mono text-slate-900 font-bold">{dbDisplay} dB</span>
+            {/* Decibel Meter & Live Waveform */}
+            <div className="bg-slate-900 rounded-xl p-4 space-y-3 border border-slate-800">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-medium">Ambient Noise Level</span>
+                <span className="font-mono font-bold text-white text-sm">
+                  {currentDb > -80 ? `${currentDb.toFixed(1)} dB` : '—'}
+                </span>
               </div>
               <DbBar db={currentDb} />
-            </div>
 
-            {/* Scrolling Waveform */}
-            <WaveformCanvas history={history} />
-
-            {/* Stats row */}
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl py-2.5">
-                <p className="text-[11px] text-slate-500 uppercase font-semibold">Sound Level</p>
-                <p className="text-base font-mono font-bold text-emerald-600 mt-0.5">{dbDisplay} dB</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl py-2.5">
-                <p className="text-[11px] text-slate-500 uppercase font-semibold">RMS Amplitude</p>
-                <p className="text-base font-mono font-bold text-slate-800 mt-0.5">{currentRms.toFixed(0)}</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl py-2.5">
-                <p className="text-[11px] text-slate-500 uppercase font-semibold">Live Speaker</p>
-                <p className={`text-base font-bold mt-0.5 ${hasRemoteAudio ? 'text-emerald-600 animate-pulse' : 'text-slate-400'}`}>
-                  {hasRemoteAudio ? '🔊 Active' : 'Off'}
-                </p>
+              <div className="pt-2">
+                <div className="text-[11px] text-slate-400 font-medium mb-1.5">
+                  Audio Waveform History (Last 60s)
+                </div>
+                <WaveformCanvas history={history} />
               </div>
             </div>
           </div>
-
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+        {/* Modal Footer */}
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <span className="text-xs text-slate-400 font-mono">
             Device ID: {device.device_id.slice(0, 16)}…
           </span>
@@ -767,7 +977,7 @@ export default function SurveillancePanel({ device, onClose }: SurveillancePanel
               cleanupAgora();
               onClose();
             }}
-            className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-xs font-semibold text-slate-700 transition cursor-pointer"
+            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-xs transition cursor-pointer"
           >
             Close Surveillance
           </button>

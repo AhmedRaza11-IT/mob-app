@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import VibeSyncLogo from '@/components/VibeSyncLogo';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -68,9 +69,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="p-6 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl brand-gradient flex items-center justify-center text-white font-bold text-lg shadow-md">
-            V
-          </div>
+          <VibeSyncLogo className="w-9 h-9" />
           <div>
             <div className="font-bold text-slate-900 text-sm leading-none">VibeSync</div>
             <div className="text-xs text-slate-500 mt-1 font-medium">Admin Workspace</div>
