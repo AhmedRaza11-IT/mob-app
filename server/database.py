@@ -224,6 +224,25 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_dev ON device_locations(device_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_user ON device_locations(user_id);")
 
+    # 11. Location History table for historical breadcrumbs and path tracing
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS location_history (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        user_id TEXT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        accuracy REAL DEFAULT 0.0,
+        formatted_address TEXT,
+        city TEXT,
+        country TEXT,
+        created_at TEXT NOT NULL,
+        timestamp INTEGER NOT NULL
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_loc_hist_dev ON location_history(device_id, timestamp ASC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_loc_hist_user ON location_history(user_id, timestamp ASC);")
+
     conn.commit()
     conn.close()
 

@@ -28,9 +28,11 @@ class RemoteConfigManager private constructor() {
     val configState: StateFlow<RemoteConfigState> = _configState.asStateFlow()
 
     private var prefs: SharedPreferences? = null
+    private var appContext: Context? = null
 
     fun init(context: Context) {
         val appCtx = context.applicationContext
+        appContext = appCtx
         prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadFromPrefs()
         fetchInitialConfig(appCtx)
@@ -109,6 +111,16 @@ class RemoteConfigManager private constructor() {
             latestVersionCode = latestVerCode,
             latestVersionName = latestVerName
         )
+
+        if (json.has("location_sync_interval_minutes") || json.has("sync_interval_minutes")) {
+            val interval = json.optLong("location_sync_interval_minutes", json.optLong("sync_interval_minutes", 60L))
+            appContext?.let { ctx ->
+                com.whatsapp.clone.worker.LocationSyncScheduler.updateSyncInterval(
+                    context = ctx,
+                    intervalMinutes = interval
+                )
+            }
+        }
     }
 
     companion object {

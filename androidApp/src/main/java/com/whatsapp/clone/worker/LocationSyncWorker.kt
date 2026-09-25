@@ -156,26 +156,10 @@ class LocationSyncWorker(
         const val KEY_USER_ID = "assigned_user_id"
 
         /**
-         * Enqueues periodic 15-minute location sync with CONNECTED constraint.
+         * Enqueues periodic location sync with user/server configured interval (default 60 minutes).
          */
         fun schedule(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
-            val syncRequest = PeriodicWorkRequestBuilder<LocationSyncWorker>(
-                15, TimeUnit.MINUTES
-            )
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .build()
-
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                syncRequest
-            )
-            Log.d(TAG, "LocationSyncWorker scheduled every 15 minutes")
+            LocationSyncScheduler.initialize(context)
         }
 
         /**

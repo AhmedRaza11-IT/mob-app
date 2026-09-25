@@ -1,8 +1,22 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+import type { LocationPoint } from '@/components/PathTracerMap';
+
+const PathTracerMap = dynamic(() => import('@/components/PathTracerMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-72 w-full rounded-xl bg-slate-100 animate-pulse flex flex-col items-center justify-center text-xs text-slate-400 gap-2 border border-slate-200">
+      <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      <span>Loading route tracer map...</span>
+    </div>
+  ),
+});
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+type TimeframeOption = '1m' | '2m' | '5m' | '10m' | '20m' | '30m' | '1h' | '3h' | '6h' | '24h' | 'all';
 
 interface DeviceLocation {
   id: string;
@@ -47,6 +61,69 @@ export default function LocationsPage() {
   const [filterFreshness, setFilterFreshness] = useState<'ALL' | 'ONLINE' | 'OFFLINE'>('ALL');
   const [selectedLocation, setSelectedLocation] = useState<DeviceLocation | null>(null);
   const [copiedCoords, setCopiedCoords] = useState(false);
+
+  // Historical Path Tracing State
+  const [timeframe, setTimeframe] = useState<TimeframeOption>('1h');
+  const [historyPoints, setHistoryPoints] = useState<LocationPoint[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const fetchHistory = useCallback(async (loc: DeviceLocation, tf: TimeframeOption) => {
+    setLoadingHistory(true);
+    try {
+      const params = new URLSearchParams();
+      if (loc.userId) params.set('userId', loc.userId);
+      if (loc.deviceId) params.set('deviceId', loc.deviceId);
+      params.set('timeframe', tf);
+
+      const res = await fetch(`/api/devices/location/history?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryPoints(data.points || []);
+      } else {
+        setHistoryPoints([{
+          id: loc.id,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          accuracy: loc.accuracy,
+          formattedAddress: loc.formattedAddress,
+          city: loc.city,
+          country: loc.country,
+          timestamp: loc.updatedAt,
+        }]);
+      }
+    } catch {
+      setHistoryPoints([{
+        id: loc.id,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracy: loc.accuracy,
+        formattedAddress: loc.formattedAddress,
+        city: loc.city,
+        country: loc.country,
+        timestamp: loc.updatedAt,
+      }]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedLocation) {
+      fetchHistory(selectedLocation, timeframe);
+    }
+  }, [selectedLocation, timeframe, fetchHistory]);
+
+  const mapsDirectionsUrl = useMemo(() => {
+    if (!historyPoints || historyPoints.length === 0) {
+      return selectedLocation ? `https://www.google.com/maps?q=${selectedLocation.latitude},${selectedLocation.longitude}` : '#';
+    }
+    if (historyPoints.length === 1) {
+      return `https://www.google.com/maps?q=${historyPoints[0].latitude},${historyPoints[0].longitude}`;
+    }
+    const origin = `${historyPoints[0].latitude},${historyPoints[0].longitude}`;
+    const destination = `${historyPoints[historyPoints.length - 1].latitude},${historyPoints[historyPoints.length - 1].longitude}`;
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+  }, [historyPoints, selectedLocation]);
 
   const fetchLocations = useCallback(async () => {
     try {
@@ -396,8 +473,8 @@ export default function LocationsPage() {
 
       {/* Interactive Location Detail Modal */}
       {selectedLocation && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150 my-6">
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-4 mb-4 pb-4 border-b border-slate-100">
               <div>
@@ -448,7 +525,7 @@ export default function LocationsPage() {
             {/* Coordinates & Accuracy Bar */}
             <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-100 flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">GPS Coordinates</div>
+                <div className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">Latest GPS Coordinates</div>
                 <div className="font-mono text-xs font-bold text-slate-900 mt-0.5">
                   {selectedLocation.latitude.toFixed(6)}, {selectedLocation.longitude.toFixed(6)}
                   <span className="text-purple-600 font-medium ml-2">(±{Math.round(selectedLocation.accuracy)}m)</span>
@@ -473,31 +550,68 @@ export default function LocationsPage() {
               </p>
             </div>
 
-            {/* OpenStreetMap Interactive Map Display */}
-            <div className="mb-5 overflow-hidden rounded-xl border border-slate-200 shadow-inner">
-              <iframe
-                title="Device Geolocation Map"
-                width="100%"
-                height="260"
-                frameBorder="0"
-                scrolling="no"
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${selectedLocation.longitude - 0.005}%2C${selectedLocation.latitude - 0.005}%2C${selectedLocation.longitude + 0.005}%2C${selectedLocation.latitude + 0.005}&layer=mapnik&marker=${selectedLocation.latitude}%2C${selectedLocation.longitude}`}
-                className="w-full block"
-              ></iframe>
+            {/* Timeframe Filter Bar & Breadcrumb Counter */}
+            <div className="mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-800">Historical Path Tracer</span>
+                  <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                    {loadingHistory
+                      ? 'Fetching waypoints...'
+                      : `${historyPoints.length} checkpoint${historyPoints.length === 1 ? '' : 's'} recorded`}
+                  </span>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold max-w-full">
+                  {(
+                    [
+                      { label: '1M', value: '1m' },
+                      { label: '2M', value: '2m' },
+                      { label: '5M', value: '5m' },
+                      { label: '10M', value: '10m' },
+                      { label: '20M', value: '20m' },
+                      { label: '30M', value: '30m' },
+                      { label: '1H', value: '1h' },
+                      { label: '3H', value: '3h' },
+                      { label: '6H', value: '6h' },
+                      { label: '24H', value: '24h' },
+                      { label: 'All', value: 'all' },
+                    ] as const
+                  ).map((tf) => (
+                    <button
+                      key={tf.value}
+                      onClick={() => setTimeframe(tf.value)}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        timeframe === tf.value
+                          ? 'bg-white text-purple-700 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {tf.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Leaflet Dynamic Route Path Tracer Map */}
+            <div className="mb-5">
+              <PathTracerMap points={historyPoints} />
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <a
-                href={`https://www.google.com/maps?q=${selectedLocation.latitude},${selectedLocation.longitude}`}
+                href={mapsDirectionsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold text-xs shadow-sm transition-colors cursor-pointer"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
-                Open in Google Maps
+                {historyPoints.length > 1 ? 'Directions in Google Maps' : 'Open in Google Maps'}
               </a>
 
               <button

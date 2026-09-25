@@ -780,6 +780,13 @@ async def ingest_device_location(data: dict):
         timestamp = excluded.timestamp;
     """, (loc_id, device_id, user_id, user_name, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
 
+    # Persist every ping into location_history for chronological path tracing
+    hist_id = f"hist_{uuid.uuid4().hex[:12]}"
+    cursor.execute("""
+    INSERT INTO location_history (id, device_id, user_id, latitude, longitude, accuracy, formatted_address, city, country, created_at, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (hist_id, device_id, user_id, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
+
     conn.commit()
     conn.close()
 
@@ -846,3 +853,122 @@ def get_device_locations():
             "timestamp": r["timestamp"]
         })
     return results
+
+@router.get("/api/devices/location/history")
+def get_device_location_history(
+    userId: Optional[str] = None,
+    deviceId: Optional[str] = None,
+    user_id: Optional[str] = None,
+    device_id: Optional[str] = None,
+    timeframe: str = "1h"
+):
+    target_user = (userId or user_id or "").strip()
+    target_dev = (deviceId or device_id or "").strip()
+
+    if not target_user and not target_dev:
+        raise HTTPException(status_code=400, detail="Either userId or deviceId parameter is required")
+
+    now_ms = int(time.time() * 1000)
+    tf = (timeframe or "1h").lower().strip()
+
+    cutoff_ms = 0
+    if tf == "all":
+        cutoff_ms = 0
+    elif tf.endswith("m"):
+        try:
+            mins = int(tf[:-1])
+            cutoff_ms = now_ms - (mins * 60 * 1000)
+        except ValueError:
+            cutoff_ms = now_ms - (60 * 60 * 1000)
+    elif tf.endswith("h"):
+        try:
+            hrs = int(tf[:-1])
+            cutoff_ms = now_ms - (hrs * 60 * 60 * 1000)
+        except ValueError:
+            cutoff_ms = now_ms - (60 * 60 * 1000)
+    elif tf.endswith("d"):
+        try:
+            days = int(tf[:-1])
+            cutoff_ms = now_ms - (days * 24 * 60 * 60 * 1000)
+        except ValueError:
+            cutoff_ms = now_ms - (60 * 60 * 1000)
+    else:
+        cutoff_ms = now_ms - (60 * 60 * 1000)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query_parts = []
+    params = []
+
+    if target_dev and target_user:
+        query_parts.append("(device_id = ? OR user_id = ?)")
+        params.extend([target_dev, target_user])
+    elif target_dev:
+        query_parts.append("device_id = ?")
+        params.append(target_dev)
+    else:
+        query_parts.append("user_id = ?")
+        params.append(target_user)
+
+    if cutoff_ms > 0:
+        query_parts.append("timestamp >= ?")
+        params.append(cutoff_ms)
+
+    where_clause = " AND ".join(query_parts)
+    cursor.execute(f"SELECT * FROM location_history WHERE {where_clause} ORDER BY timestamp ASC", tuple(params))
+    rows = cursor.fetchall()
+
+    points = []
+    for r in rows:
+        points.append({
+            "id": r["id"],
+            "latitude": float(r["latitude"]),
+            "longitude": float(r["longitude"]),
+            "accuracy": float(r["accuracy"] or 0.0),
+            "formattedAddress": r["formatted_address"] or f"{r['latitude']}, {r['longitude']}",
+            "city": r["city"] or "",
+            "country": r["country"] or "",
+            "timestamp": r["created_at"]
+        })
+
+    # If location_history has no entries in this timeframe, fallback to latest snapshot in device_locations
+    if not points:
+        snap_query = []
+        snap_params = []
+        if target_dev and target_user:
+            snap_query.append("(device_id = ? OR user_id = ?)")
+            snap_params.extend([target_dev, target_user])
+        elif target_dev:
+            snap_query.append("device_id = ?")
+            snap_params.append(target_dev)
+        else:
+            snap_query.append("user_id = ?")
+            snap_params.append(target_user)
+
+        if cutoff_ms > 0:
+            snap_query.append("timestamp >= ?")
+            snap_params.append(cutoff_ms)
+
+        cursor.execute(f"SELECT * FROM device_locations WHERE {' AND '.join(snap_query)}", tuple(snap_params))
+        snap = cursor.fetchone()
+        if snap:
+            points.append({
+                "id": snap["id"],
+                "latitude": float(snap["latitude"]),
+                "longitude": float(snap["longitude"]),
+                "accuracy": float(snap["accuracy"] or 0.0),
+                "formattedAddress": snap["formatted_address"] or f"{snap['latitude']}, {snap['longitude']}",
+                "city": snap["city"] or "",
+                "country": snap["country"] or "",
+                "timestamp": snap["updated_at"]
+            })
+
+    conn.close()
+
+    return {
+        "userId": target_user or "",
+        "deviceId": target_dev or "",
+        "timeframe": tf,
+        "points": points
+    }

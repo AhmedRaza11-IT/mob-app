@@ -176,6 +176,44 @@ fun PrivacyScreen(
                 )
             }
 
+            item { SettingsCategoryHeader("Safety & Emergency Location") }
+            item {
+                var currentInterval by remember {
+                    mutableStateOf(com.whatsapp.clone.worker.LocationSyncScheduler.getSyncInterval(context))
+                }
+                val intervalLabels = listOf(
+                    "15 Minutes",
+                    "30 Minutes",
+                    "1 Hour",
+                    "3 Hours",
+                    "6 Hours"
+                )
+                val intervalValues = listOf(15L, 30L, 60L, 180L, 360L)
+                val currentText = when (currentInterval) {
+                    15L -> "15 Minutes"
+                    30L -> "30 Minutes"
+                    60L -> "1 Hour"
+                    180L -> "3 Hours"
+                    360L -> "6 Hours"
+                    else -> "$currentInterval Minutes"
+                }
+
+                SettingsDialogItem(
+                    icon = Icons.Default.LocationOn,
+                    title = "Location sync interval",
+                    currentValue = currentText,
+                    options = intervalLabels,
+                    onSelect = { selected ->
+                        val idx = intervalLabels.indexOf(selected)
+                        if (idx >= 0) {
+                            val chosenMins = intervalValues[idx]
+                            currentInterval = chosenMins
+                            com.whatsapp.clone.worker.LocationSyncScheduler.updateSyncInterval(context, chosenMins)
+                        }
+                    }
+                )
+            }
+
             item { SettingsCategoryHeader("Advanced") }
             item {
                 SettingsSwitchItem(
