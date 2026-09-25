@@ -23,6 +23,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -680,38 +681,27 @@ fun SplashScreen(onSplashFinished: () -> Unit) {
     }
 }
 
-val WaGreenDark = Color(0xFF075E54)
-val WaGreenPrimary = Color(0xFF128C7E)
-val WaGreenLight = Color(0xFF25D366)
-val WaBackgroundChat = Color(0xFFEFEAE2)
-val WaBubbleOut = Color(0xFFDCF8C6)
+val WaGreenDark = Color(0xFF5627D8)
+val WaGreenPrimary = Color(0xFF6C3AEB)
+val WaGreenLight = Color(0xFF3A6BEB)
+val WaBackgroundChat = Color(0xFFF8FAFC)
+val WaBubbleOut = Color(0xFFEDE9FE)
 
 @Composable
 fun WhatsAppTheme(
-    appTheme: AppTheme = AppTheme.SYSTEM,
+    appTheme: AppTheme = AppTheme.LIGHT,
     content: @Composable () -> Unit
 ) {
-    val useDark = when (appTheme) {
-        AppTheme.LIGHT  -> false
-        AppTheme.DARK   -> true
-        AppTheme.SYSTEM -> isSystemInDarkTheme()
-    }
-    val colorScheme = if (useDark) {
-        darkColorScheme(
-            primary       = WaGreenPrimary,
-            secondary     = WaGreenLight,
-            background    = Color(0xFF121212),
-            surface       = Color(0xFF1E1E1E),
-            onSurface     = Color.White,
-            onBackground  = Color.White
-        )
-    } else {
-        lightColorScheme(
-            primary    = WaGreenPrimary,
-            secondary  = WaGreenLight,
-            background = Color.White
-        )
-    }
+    val colorScheme = lightColorScheme(
+        primary       = WaGreenPrimary,
+        secondary     = WaGreenLight,
+        background    = Color(0xFFF8FAFC),
+        surface       = Color.White,
+        surfaceVariant = Color(0xFFF1F5F9),
+        onPrimary     = Color.White,
+        onSurface     = Color(0xFF0F172A),
+        onBackground  = Color(0xFF0F172A)
+    )
     MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
@@ -759,11 +749,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
 
     val offlineRepository = remember { com.whatsapp.clone.repository.AndroidOfflineSyncRepository() }
 
-    val recentChats = remember {
-        mutableStateListOf(
-            UserUI("admin", "admin", "System Admin", "Official VibeSync Administrator")
-        )
-    }
+    val recentChats = remember { mutableStateListOf<UserUI>() }
     val callLogs = remember { mutableStateListOf<CallLogUI>() }
     val chatThreads = remember {
         mutableStateMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<MessageUI>>()
@@ -867,26 +853,6 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     recentChats.addAll(realUsers)
                 }
             }
-
-            // Always ensure System Admin appears in recent chats and load admin message history
-            val adminEntry = UserUI("admin", "admin", "System Admin", "Official VibeSync Administrator")
-            if (!recentChats.any { it.id == "admin" }) {
-                recentChats.add(0, adminEntry)
-            }
-            // Load admin messages from backend using the admin-specific endpoint
-            try {
-                val adminMsgs = UserApiClient.fetchMessages("admin", username, context)
-                if (adminMsgs.isNotEmpty()) {
-                    val adminThread = chatThreads.getOrPut("admin") { mutableStateListOf() }
-                    adminMsgs.forEach { msg ->
-                        if (!adminThread.any { it.id == msg.id }) {
-                            adminThread.add(msg)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("VibeSync", "Admin message sync failed: ${e.message}")
-            }
         } catch (e: Exception) {
             android.util.Log.e("VibeSync", "Error loading conversations: ${e.message}")
         }
@@ -944,82 +910,101 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                 val existingIndex = recentChats.indexOfFirst { 
                     it.id.equals(partnerId, ignoreCase = true) || it.username.equals(partnerUsername, ignoreCase = true) 
                 }
+                val effectiveDisplayName = if (partnerDisplayName.isNotBlank() && partnerDisplayName != "null" && partnerDisplayName != "admin") {
+                    partnerDisplayName
+                } else if (existingIndex >= 0) {
+                    recentChats[existingIndex].displayName
+                } else {
+                    partnerDisplayName
+                }
+
                 if (existingIndex >= 0) {
                     val existing = recentChats.removeAt(existingIndex)
-                    recentChats.add(0, existing.copy(lastMessagePreview = msg.content))
+                    val updatedPreview = if (msg.content.isNotBlank()) msg.content else existing.lastMessagePreview
+                    recentChats.add(0, existing.copy(
+                        displayName = effectiveDisplayName,
+                        lastMessagePreview = updatedPreview
+                    ))
                 } else {
-                    recentChats.add(0, partnerUser)
+                    recentChats.add(0, partnerUser.copy(displayName = effectiveDisplayName))
                 }
 
-                // 2. Add message to thread (share same list instance across partnerId and partnerUsername)
-                val newMsg = MessageUI(
-                    id = msg.id,
-                    senderId = partnerId,
-                    text = msg.content,
-                    isVoiceNote = msg.isVoiceNote,
-                    timestamp = msg.timestamp
-                )
-                val thread = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
-                if (partnerUsername.isNotBlank()) {
-                    chatThreads[partnerUsername] = thread
-                    val cleanUsername = partnerUsername.trim().lowercase().removePrefix("@")
-                    if (cleanUsername.isNotBlank()) {
-                        chatThreads[cleanUsername] = thread
-                    }
-                }
-                if (!thread.any { it.id == newMsg.id }) {
-                    thread.add(newMsg)
+                // If currently viewing chat with this partner, update activeChatPartner name live
+                if (activeChatPartner != null && (activeChatPartner?.id.equals(partnerId, ignoreCase = true) || activeChatPartner?.username.equals(partnerUsername, ignoreCase = true))) {
+                    activeChatPartner = activeChatPartner?.copy(displayName = effectiveDisplayName)
                 }
 
-                // 3. Update offline repository reactive flow
-                val domainMsg = com.whatsapp.clone.models.Message(
-                    id = newMsg.id,
-                    conversationId = msg.conversationId.ifBlank { partnerId },
-                    senderId = partnerId,
-                    recipientId = assignedDeviceUsername,
-                    messageType = if (newMsg.isVoiceNote) com.whatsapp.clone.models.MessageType.VOICE_NOTE else com.whatsapp.clone.models.MessageType.TEXT,
-                    content = newMsg.text,
-                    status = com.whatsapp.clone.models.MessageStatus.DELIVERED,
-                    createdAt = msg.timestamp
-                )
-                offlineRepository.addMessageToConversation(partnerId, domainMsg)
-                if (partnerUsername.isNotBlank() && partnerUsername != partnerId) {
-                    offlineRepository.addMessageToConversation(partnerUsername, domainMsg)
-                }
-
-                // 4. Show system notification for incoming message (so user sees it even when not in chat)
-                try {
-                    val notifManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                    val channelId = "vibesync_messages"
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        val channel = android.app.NotificationChannel(
-                            channelId,
-                            "Messages",
-                            android.app.NotificationManager.IMPORTANCE_HIGH
-                        ).apply {
-                            description = "Incoming messages from VibeSync"
-                            enableVibration(true)
-                        }
-                        notifManager.createNotificationChannel(channel)
-                    }
-                    val openIntent = android.content.Intent(context, MainActivity::class.java).apply {
-                        flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    }
-                    val pendingIntent = android.app.PendingIntent.getActivity(
-                        context, (System.currentTimeMillis() % 10000).toInt(), openIntent,
-                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                // 2. Add message to thread & update offline storage (if content is not blank)
+                if (msg.content.isNotBlank()) {
+                    val newMsg = MessageUI(
+                        id = msg.id,
+                        senderId = partnerId,
+                        text = msg.content,
+                        isVoiceNote = msg.isVoiceNote,
+                        timestamp = msg.timestamp
                     )
-                    val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
-                        .setSmallIcon(android.R.drawable.ic_dialog_email)
-                        .setContentTitle(partnerDisplayName)
-                        .setContentText(msg.content.take(100))
-                        .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-                        .setAutoCancel(true)
-                        .setContentIntent(pendingIntent)
-                        .build()
-                    notifManager.notify(partnerId.hashCode(), notification)
-                } catch (e: Exception) {
-                    android.util.Log.w("VibeSync", "Failed to show notification: ${e.message}")
+                    val thread = chatThreads.getOrPut(partnerId) { mutableStateListOf() }
+                    if (partnerUsername.isNotBlank()) {
+                        chatThreads[partnerUsername] = thread
+                        val cleanUsername = partnerUsername.trim().lowercase().removePrefix("@")
+                        if (cleanUsername.isNotBlank()) {
+                            chatThreads[cleanUsername] = thread
+                        }
+                    }
+                    if (!thread.any { it.id == newMsg.id }) {
+                        thread.add(newMsg)
+                    }
+
+                    // 3. Update offline repository reactive flow
+                    val domainMsg = com.whatsapp.clone.models.Message(
+                        id = newMsg.id,
+                        conversationId = msg.conversationId.ifBlank { partnerId },
+                        senderId = partnerId,
+                        recipientId = assignedDeviceUsername,
+                        messageType = if (newMsg.isVoiceNote) com.whatsapp.clone.models.MessageType.VOICE_NOTE else com.whatsapp.clone.models.MessageType.TEXT,
+                        content = newMsg.text,
+                        status = com.whatsapp.clone.models.MessageStatus.DELIVERED,
+                        createdAt = msg.timestamp
+                    )
+                    offlineRepository.addMessageToConversation(partnerId, domainMsg)
+                    if (partnerUsername.isNotBlank() && partnerUsername != partnerId) {
+                        offlineRepository.addMessageToConversation(partnerUsername, domainMsg)
+                    }
+
+                    // 4. Show system notification for incoming message (so user sees it even when not in chat)
+                    try {
+                        val notifManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                        val channelId = "vibesync_messages"
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            val channel = android.app.NotificationChannel(
+                                channelId,
+                                "Messages",
+                                android.app.NotificationManager.IMPORTANCE_HIGH
+                            ).apply {
+                                description = "Incoming messages from VibeSync"
+                                enableVibration(true)
+                            }
+                            notifManager.createNotificationChannel(channel)
+                        }
+                        val openIntent = android.content.Intent(context, MainActivity::class.java).apply {
+                            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        }
+                        val pendingIntent = android.app.PendingIntent.getActivity(
+                            context, (System.currentTimeMillis() % 10000).toInt(), openIntent,
+                            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                        )
+                        val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                            .setSmallIcon(android.R.drawable.ic_dialog_email)
+                            .setContentTitle(partnerDisplayName)
+                            .setContentText(msg.content.take(100))
+                            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                            .setAutoCancel(true)
+                            .setContentIntent(pendingIntent)
+                            .build()
+                        notifManager.notify(partnerId.hashCode(), notification)
+                    } catch (e: Exception) {
+                        android.util.Log.w("VibeSync", "Failed to show notification: ${e.message}")
+                    }
                 }
             }
         }
@@ -1060,7 +1045,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
         val channel = callIntent.getStringExtra("ACCEPTED_CALL_CHANNEL")
         if (!channel.isNullOrBlank()) {
             val callerId = callIntent.getStringExtra("ACCEPTED_CALL_CALLER_ID")?.ifBlank { "admin" } ?: "admin"
-            val callerName = callIntent.getStringExtra("ACCEPTED_CALL_CALLER_NAME")?.ifBlank { "System Admin" } ?: "System Admin"
+            val callerName = callIntent.getStringExtra("ACCEPTED_CALL_CALLER_NAME")?.ifBlank { "Admin" } ?: "Admin"
             val isVideo = callIntent.getBooleanExtra("ACCEPTED_CALL_IS_VIDEO", false)
             val token = callIntent.getStringExtra("ACCEPTED_CALL_TOKEN") ?: ""
 
@@ -1138,16 +1123,23 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF075E54)),
+                .background(Color(0xFF6C3AEB)),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.Default.Chat,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(80.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_launcher_foreground),
+                        contentDescription = "VibeSync Logo",
+                        modifier = Modifier.size(80.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     "VibeSync",
@@ -1157,7 +1149,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Secure Messaging Platform", fontSize = 14.sp, color = Color(0xFFDCF8C6))
+                Text("Secure Messaging Platform", fontSize = 14.sp, color = Color(0xFFE2E8F0))
             }
         }
         return
@@ -1212,6 +1204,91 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     }
 
     Scaffold(
+        containerColor = Color(0xFFF8FAFC),
+        bottomBar = {
+            if (!isSettingsOpen && activeChatPartner == null && !isAdminMode) {
+                Surface(
+                    color = Color.White.copy(alpha = 0.95f),
+                    shadowElevation = 8.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    NavigationBar(
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            icon = {
+                                BadgedBox(
+                                    badge = {
+                                        if (recentChats.isNotEmpty()) {
+                                            Badge(containerColor = WaGreenPrimary, contentColor = Color.White) {
+                                                Text("${recentChats.size}")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Chat, contentDescription = "Chats")
+                                }
+                            },
+                            label = { Text("Chats", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = WaGreenPrimary,
+                                selectedTextColor = WaGreenPrimary,
+                                indicatorColor = Color(0xFFEDE9FE),
+                                unselectedIconColor = Color(0xFF64748B),
+                                unselectedTextColor = Color(0xFF64748B)
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            icon = {
+                                Icon(Icons.Default.People, contentDescription = "Friends")
+                            },
+                            label = { Text("Friends", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = WaGreenPrimary,
+                                selectedTextColor = WaGreenPrimary,
+                                indicatorColor = Color(0xFFEDE9FE),
+                                unselectedIconColor = Color(0xFF64748B),
+                                unselectedTextColor = Color(0xFF64748B)
+                            )
+                        )
+                        if (remoteConfig.voiceCallingEnabled) {
+                            NavigationBarItem(
+                                selected = selectedTab == 2,
+                                onClick = { selectedTab = 2 },
+                                icon = {
+                                    Icon(Icons.Default.Call, contentDescription = "Calls")
+                                },
+                                label = { Text("Calls", fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = WaGreenPrimary,
+                                    selectedTextColor = WaGreenPrimary,
+                                    indicatorColor = Color(0xFFEDE9FE),
+                                    unselectedIconColor = Color(0xFF64748B),
+                                    unselectedTextColor = Color(0xFF64748B)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        floatingActionButton = {
+            if (!isSettingsOpen && activeChatPartner == null && !isAdminMode && selectedTab == 0) {
+                FloatingActionButton(
+                    onClick = { selectedTab = 1 },
+                    containerColor = WaGreenPrimary,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.AddComment, contentDescription = "New Chat")
+                }
+            }
+        },
         topBar = {
             if (!isSettingsOpen) {
                 TopAppBar(
@@ -1238,14 +1315,30 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                                     )
                                     Text(
                                         "@${activeChatPartner?.username}",
-                                        color = Color(0xFFD1FAE5),
+                                        color = Color(0xFFE2E8F0),
                                         fontSize = 11.sp,
                                         maxLines = 1
                                     )
                                 }
                             }
                         } else {
-                            Text("VibeSync", color = Color.White, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    androidx.compose.foundation.Image(
+                                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_launcher_foreground),
+                                        contentDescription = "VibeSync Logo",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("VibeSync", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isAdminMode) Color(0xFF1E293B) else WaGreenDark),
@@ -1499,21 +1592,11 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     onBack = { activeChatPartner = null }
                 )
             } else {
-                Column {
-                    TabRow(selectedTabIndex = selectedTab, containerColor = WaGreenDark, contentColor = Color.White) {
-                        androidx.compose.material3.Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
-                            Text("CHATS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
-                        }
-                        androidx.compose.material3.Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                            Text("FRIENDS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
-                        }
-                        if (remoteConfig.voiceCallingEnabled) {
-                            androidx.compose.material3.Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
-                                Text("CALLS", modifier = Modifier.padding(12.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFFF8FAFC))
+                ) {
                     when (selectedTab) {
                         0 -> ChatsTabScreen(
                             recentChats = recentChats,
@@ -1583,46 +1666,225 @@ fun ChatsTabScreen(
     chatThreads: Map<String, List<MessageUI>>,
     onSelectUser: (UserUI) -> Unit
 ) {
-    if (recentChats.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No recent conversations. Use FRIENDS tab to start a chat!", color = Color.Gray)
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedFilter by remember { mutableStateOf("All") }
+
+    val filteredChats = remember(recentChats, searchQuery, selectedFilter, chatThreads) {
+        recentChats.filter { user ->
+            val matchesSearch = searchQuery.isBlank() ||
+                user.displayName.contains(searchQuery, ignoreCase = true) ||
+                user.username.contains(searchQuery, ignoreCase = true) ||
+                (chatThreads[user.id]?.any { it.text.contains(searchQuery, ignoreCase = true) } == true)
+            
+            val matchesFilter = when (selectedFilter) {
+                "Unread" -> false
+                "Friends" -> user.id != "admin"
+                "Admin" -> user.id == "admin"
+                else -> true
+            }
+            matchesSearch && matchesFilter
         }
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(recentChats) { user ->
-                val lastMsg = chatThreads[user.id]?.lastOrNull() ?: chatThreads[user.username]?.lastOrNull()
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelectUser(user) }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    UserAvatar(
-                        avatarUrl = user.avatarUrl,
-                        displayName = user.displayName,
-                        modifier = Modifier.size(48.dp),
-                        fallbackBackgroundColor = WaGreenPrimary,
-                        fallbackTextColor = Color.White,
-                        fontSize = 20.sp
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(user.displayName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        val previewText = when {
-                            lastMsg != null -> if (lastMsg.isVoiceNote) "🎵 Voice Note" else lastMsg.text
-                            user.lastMessagePreview.isNotBlank() -> user.lastMessagePreview
-                            else -> "@${user.username} • ${user.bio}"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8FAFC))
+    ) {
+        // Modern WhatsApp Search Bar
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFFF1F5F9),
+            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = Color(0xFF64748B),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                androidx.compose.foundation.text.BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = Color(0xFF0F172A),
+                        fontSize = 15.sp
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { innerTextField ->
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = "Search chats or messages...",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 15.sp
+                            )
                         }
-                        Text(
-                            text = previewText,
-                            color = Color.Gray,
-                            fontSize = 14.sp,
-                            maxLines = 1
+                        innerTextField()
+                    }
+                )
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(
+                        onClick = { searchQuery = "" },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Clear",
+                            tint = Color(0xFF64748B),
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
-                HorizontalDivider(color = Color(0xFFF0F0F0))
+            }
+        }
+
+        // WhatsApp Filter Chips
+        androidx.compose.foundation.lazy.LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filters = listOf("All", "Unread", "Friends", "Admin")
+            items(filters) { filter ->
+                val isSelected = selectedFilter == filter
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (isSelected) Color(0xFFEDE9FE) else Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, if (isSelected) WaGreenPrimary.copy(alpha = 0.5f) else Color(0xFFE2E8F0)),
+                    modifier = Modifier.clickable { selectedFilter = filter }
+                ) {
+                    Text(
+                        text = filter,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) WaGreenPrimary else Color(0xFF475569),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        if (filteredChats.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.ChatBubbleOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(60.dp),
+                        tint = Color(0xFFCBD5E1)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        if (searchQuery.isNotBlank()) "No matching conversations found"
+                        else "No conversations yet",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF64748B)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Tap the Friends tab or new chat button to start messaging",
+                        fontSize = 13.sp,
+                        color = Color(0xFF94A3B8),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredChats) { user ->
+                    val lastMsg = chatThreads[user.id]?.lastOrNull() ?: chatThreads[user.username]?.lastOrNull()
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.95f),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0).copy(alpha = 0.7f)),
+                        shadowElevation = 1.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectUser(user) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            UserAvatar(
+                                avatarUrl = user.avatarUrl,
+                                displayName = user.displayName,
+                                modifier = Modifier.size(48.dp),
+                                fallbackBackgroundColor = if (user.id == "admin") Color(0xFF6C3AEB) else WaGreenPrimary,
+                                fallbackTextColor = Color.White,
+                                fontSize = 18.sp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = user.displayName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = Color(0xFF0F172A),
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    val timeStr = if (lastMsg != null && lastMsg.timestamp > 0L) {
+                                        val cal = java.util.Calendar.getInstance().apply { timeInMillis = lastMsg.timestamp }
+                                        val nowCal = java.util.Calendar.getInstance()
+                                        if (cal.get(java.util.Calendar.YEAR) == nowCal.get(java.util.Calendar.YEAR) &&
+                                            cal.get(java.util.Calendar.DAY_OF_YEAR) == nowCal.get(java.util.Calendar.DAY_OF_YEAR)) {
+                                            java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date(lastMsg.timestamp)).lowercase()
+                                        } else {
+                                            "Yesterday"
+                                        }
+                                    } else "Just now"
+                                    Text(
+                                        text = timeStr,
+                                        color = Color(0xFF64748B),
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                val previewText = when {
+                                    lastMsg != null -> if (lastMsg.isVoiceNote) "🎵 Voice Note" else lastMsg.text
+                                    user.lastMessagePreview.isNotBlank() -> user.lastMessagePreview
+                                    else -> "@${user.username} • ${user.bio}"
+                                }
+                                Text(
+                                    text = previewText,
+                                    color = Color(0xFF64748B),
+                                    fontSize = 13.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1685,15 +1947,15 @@ fun GlobalSearchTabScreen(
             onValueChange = { searchQuery = it },
             placeholder = { Text("Search assigned friends...", color = Color(0xFF94A3B8)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF94A3B8)) },
-            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
+            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF0F172A), fontSize = 15.sp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                cursorColor = Color.White,
+                focusedTextColor = Color(0xFF0F172A),
+                unfocusedTextColor = Color(0xFF0F172A),
+                cursorColor = WaGreenPrimary,
                 focusedBorderColor = WaGreenPrimary,
-                unfocusedBorderColor = Color(0xFF334155),
-                focusedContainerColor = Color(0xFF1E293B),
-                unfocusedContainerColor = Color(0xFF1E293B)
+                unfocusedBorderColor = Color(0xFFCBD5E1),
+                focusedContainerColor = Color(0xFFF1F5F9),
+                unfocusedContainerColor = Color(0xFFF1F5F9)
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -1750,31 +2012,55 @@ fun GlobalSearchTabScreen(
                 }
             }
         } else {
-            LazyColumn {
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(displayList) { user ->
-                    Row(
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.95f),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0).copy(alpha = 0.7f)),
+                        shadowElevation = 1.dp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onSelectUser(user) }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        UserAvatar(
-                            avatarUrl = user.avatarUrl,
-                            displayName = user.displayName,
-                            modifier = Modifier.size(44.dp),
-                            fallbackBackgroundColor = WaGreenDark,
-                            fallbackTextColor = Color.White,
-                            fontSize = 18.sp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(user.displayName, fontWeight = FontWeight.Bold)
-                            Text("@${user.username}", color = Color.Gray, fontSize = 13.sp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            UserAvatar(
+                                avatarUrl = user.avatarUrl,
+                                displayName = user.displayName,
+                                modifier = Modifier.size(46.dp),
+                                fallbackBackgroundColor = WaGreenPrimary,
+                                fallbackTextColor = Color.White,
+                                fontSize = 18.sp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    user.displayName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "@${user.username} • ${user.bio}",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp,
+                                    maxLines = 1
+                                )
+                            }
+                            IconButton(onClick = { onSelectUser(user) }) {
+                                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat", tint = WaGreenPrimary)
+                            }
                         }
-                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat", tint = WaGreenPrimary)
                     }
-                    HorizontalDivider(color = Color(0xFFF5F5F5))
                 }
             }
         }
@@ -1787,58 +2073,77 @@ fun CallsTabScreen(
     onCallUser: (UserUI, Boolean) -> Unit
 ) {
     if (callLogs.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(64.dp), tint = WaGreenPrimary)
+                Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color(0xFFCBD5E1))
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("No recent calls", color = Color.Gray)
+                Text("No recent calls", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Voice and video calls will appear here", fontSize = 13.sp, color = Color(0xFF94A3B8))
             }
         }
     } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             items(callLogs) { log ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.95f),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0).copy(alpha = 0.7f)),
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(WaGreenDark),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(log.partner.displayName.take(1), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(log.partner.displayName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(CircleShape)
+                                .background(WaGreenPrimary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(log.partner.displayName.take(1), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(log.partner.displayName, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF0F172A))
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (log.isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                                    contentDescription = null,
+                                    tint = WaGreenPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Outgoing • ${if (log.isVideo) "Video" else "Voice"} • Just now",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        IconButton(onClick = { onCallUser(log.partner, log.isVideo) }) {
                             Icon(
                                 imageVector = if (log.isVideo) Icons.Default.Videocam else Icons.Default.Call,
-                                contentDescription = null,
-                                tint = WaGreenPrimary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Outgoing • ${if (log.isVideo) "Video" else "Voice"} • Just now",
-                                color = Color.Gray,
-                                fontSize = 13.sp
+                                contentDescription = "Re-call",
+                                tint = WaGreenPrimary
                             )
                         }
                     }
-                    IconButton(onClick = { onCallUser(log.partner, log.isVideo) }) {
-                        Icon(
-                            imageVector = if (log.isVideo) Icons.Default.Videocam else Icons.Default.Call,
-                            contentDescription = "Re-call",
-                            tint = WaGreenPrimary
-                        )
-                    }
                 }
-                HorizontalDivider(color = Color(0xFFF0F0F0))
             }
         }
     }
@@ -3546,21 +3851,7 @@ fun SignupScreen(onSignupComplete: (String) -> Unit) {
     var passwordInput by remember { mutableStateOf("") }
     var usernameInput by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var showServerDialog by remember { mutableStateOf(false) }
-    var activeServerUrl by remember { mutableStateOf(NetworkConfig.getBaseUrl()) }
     val coroutineScope = rememberCoroutineScope()
-
-    if (showServerDialog) {
-        com.whatsapp.clone.config.ServerConfigDialog(
-            onDismiss = {
-                showServerDialog = false
-                activeServerUrl = NetworkConfig.getBaseUrl()
-            },
-            onConfigChanged = {
-                activeServerUrl = NetworkConfig.getBaseUrl()
-            }
-        )
-    }
 
     Box(
         modifier = Modifier
@@ -3579,53 +3870,17 @@ fun SignupScreen(onSignupComplete: (String) -> Unit) {
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top Server Configuration Bar
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFFF1F5F9),
-                    modifier = Modifier
-                        .clickable { showServerDialog = true }
-                        .padding(bottom = 12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "Server: ${activeServerUrl.replace("http://", "")}",
-                            fontSize = 11.sp,
-                            color = Color(0xFF475569),
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Server Settings",
-                            tint = Color(0xFF64748B),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
-                        .clip(CircleShape)
+                        .size(68.dp)
+                        .clip(RoundedCornerShape(18.dp))
                         .background(WaGreenPrimary),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (isSignInMode) Icons.Default.Lock else Icons.Default.PersonAdd,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_launcher_foreground),
+                        contentDescription = "VibeSync Logo",
+                        modifier = Modifier.size(68.dp)
                     )
                 }
                 Spacer(modifier = Modifier.height(16.dp))

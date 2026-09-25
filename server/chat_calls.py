@@ -24,6 +24,83 @@ except ImportError:
 
 router = APIRouter(tags=["Chat Messages & Voice/Video Calls"])
 
+def get_admin_alias(user_key: str) -> str:
+    """Returns custom admin alias for a specific user, or default 'Admin'."""
+    if not user_key:
+        return "Admin"
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT admin_alias FROM admin_user_aliases WHERE LOWER(user_key) = LOWER(?)", (str(user_key).strip(),))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row["admin_alias"] and row["admin_alias"].strip():
+            return row["admin_alias"].strip()
+    except Exception as e:
+        logger.warning(f"Error fetching admin alias: {e}")
+    return "Admin"
+
+def set_admin_alias_db(user_key: str, alias: str):
+    """Sets or updates the custom admin alias for a specific user."""
+    if not user_key or not alias:
+        return
+    now = int(time.time() * 1000)
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO admin_user_aliases (user_key, admin_alias, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_key) DO UPDATE SET admin_alias = excluded.admin_alias, updated_at = excluded.updated_at
+        """, (str(user_key).strip(), alias.strip(), now))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Error saving admin alias: {e}")
+
+# --- ADMIN ALIAS & CUSTOM DISPLAY NAME ---
+
+@router.get("/api/admin/alias/{user_id}")
+def get_alias_endpoint(user_id: str):
+    alias = get_admin_alias(user_id)
+    return {"user_id": user_id, "admin_alias": alias}
+
+@router.post("/api/admin/alias")
+async def set_alias_endpoint(data: dict):
+    user_id = data.get("user_id") or data.get("target_user")
+    alias = data.get("admin_alias") or data.get("alias")
+    if not user_id or not alias:
+        raise HTTPException(status_code=400, detail="Missing user_id or admin_alias")
+    
+    clean_alias = alias.strip()
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (user_id, user_id))
+    u_row = cursor.fetchone()
+    target_id = u_row["id"] if u_row else user_id
+    target_username = u_row["username"] if u_row else user_id
+    conn.close()
+
+    # Save for both ID and username
+    set_admin_alias_db(target_id, clean_alias)
+    if target_username != target_id:
+        set_admin_alias_db(target_username, clean_alias)
+
+    # Broadcast live WebSocket event to user device so their UI updates immediately
+    ws_event = {
+        "type": "ADMIN_ALIAS_UPDATED",
+        "payload": {
+            "partner_id": "admin",
+            "partner_username": "admin",
+            "admin_alias": clean_alias
+        }
+    }
+    await ws_manager.send_personal_message(ws_event, target_id)
+    if target_username != target_id:
+        await ws_manager.send_personal_message(ws_event, target_username)
+
+    return {"status": "success", "user_id": target_id, "admin_alias": clean_alias}
+
 # --- ADMIN MESSAGING & CALL INITIATION ---
 
 @router.get("/api/admin/messages/{user_id}")
@@ -78,6 +155,15 @@ async def admin_send_message(data: dict):
     target_id = user_row["id"] if user_row else recipient_id
     target_username = user_row["username"] if user_row else recipient_id
 
+    sender_display_name = data.get("sender_display_name")
+    if not sender_display_name or not str(sender_display_name).strip():
+        sender_display_name = get_admin_alias(target_id) or get_admin_alias(target_username) or "Admin"
+    else:
+        sender_display_name = str(sender_display_name).strip()
+        set_admin_alias_db(target_id, sender_display_name)
+        if target_username != target_id:
+            set_admin_alias_db(target_username, sender_display_name)
+
     sender_id = "admin"
     p1, p2 = sorted([sender_id, target_id])
 
@@ -109,7 +195,7 @@ async def admin_send_message(data: dict):
             "conversation_id": conv_id,
             "sender_id": "admin",
             "sender_username": "admin",
-            "sender_display_name": "System Admin",
+            "sender_display_name": sender_display_name,
             "recipient_id": target_id,
             "message_type": message_type,
             "content": content,
@@ -128,6 +214,7 @@ async def admin_send_message(data: dict):
             "id": msg_id,
             "conversation_id": conv_id,
             "sender_id": "admin",
+            "sender_display_name": sender_display_name,
             "recipient_id": target_id,
             "message_type": message_type,
             "content": content,
@@ -138,7 +225,7 @@ async def admin_send_message(data: dict):
 
 @router.post("/api/admin/calls/initiate")
 async def admin_initiate_call(data: dict):
-    recipient_id = data.get("recipient_id")
+    recipient_id = data.get("recipient_id") or data.get("target_user")
     is_video = bool(data.get("is_video", False))
 
     if not recipient_id:
@@ -152,6 +239,15 @@ async def admin_initiate_call(data: dict):
     user_row = cursor.fetchone()
     target_id = user_row["id"] if user_row else recipient_id
     target_username = user_row["username"] if user_row else recipient_id
+
+    caller_name = data.get("caller_name")
+    if not caller_name or not str(caller_name).strip():
+        caller_name = get_admin_alias(target_id) or get_admin_alias(target_username) or "Admin"
+    else:
+        caller_name = str(caller_name).strip()
+        set_admin_alias_db(target_id, caller_name)
+        if target_username != target_id:
+            set_admin_alias_db(target_username, caller_name)
 
     call_id = str(uuid.uuid4())
     channel_name = f"admin_call_{target_username}_{int(time.time())}"
@@ -180,7 +276,7 @@ async def admin_initiate_call(data: dict):
         "type": "CALL_INITIATE",
         "call_id": call_id,
         "caller_id": "admin",
-        "caller_name": "System Admin",
+        "caller_name": caller_name,
         "recipient_id": target_id,
         "is_video": is_video,
         "channel_name": channel_name,
@@ -259,6 +355,13 @@ def get_conversations(user_id: str):
     conversations = []
     for r in rows:
         item = dict(r)
+        p_id = str(item.get("partner_id", "")).lower()
+        p_user = str(item.get("partner_username", "")).lower()
+        if p_id == "admin" or p_user == "admin":
+            admin_alias = get_admin_alias(u_id) or get_admin_alias(u_name) or "Admin"
+            item["partner_display_name"] = admin_alias
+            item["partner_username"] = "admin"
+            item["partner_id"] = "admin"
         item["is_online"] = ws_manager.is_online(r["partner_id"])
         conversations.append(item)
     return conversations
@@ -322,6 +425,10 @@ def get_messages(conversation_id: str, current_user: Optional[str] = None):
     messages = []
     for r in rows:
         m = dict(r)
+        if m.get("sender_id") == "admin":
+            user_key = current_user or m.get("recipient_id")
+            m["sender_display_name"] = get_admin_alias(user_key)
+            m["sender_username"] = "admin"
         if m.get("waveform_data"):
             try:
                 m["waveform_data"] = json.loads(m["waveform_data"])

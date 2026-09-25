@@ -229,10 +229,25 @@ class WebSocketSignalingManager private constructor() {
                     Log.i(TAG, "Dispatched IncomingMessageEvent: from $sDisplayName: $text")
                     _incomingMessages.tryEmit(event)
                 }
+                "ADMIN_ALIAS_UPDATED" -> {
+                    val payload = json.optJSONObject("payload") ?: json
+                    val alias = payload.optString("admin_alias", "Admin")
+                    val event = IncomingMessageEvent(
+                        id = java.util.UUID.randomUUID().toString(),
+                        conversationId = "admin",
+                        senderId = "admin",
+                        senderUsername = "admin",
+                        senderDisplayName = alias,
+                        content = "",
+                        isVoiceNote = false,
+                        timestamp = System.currentTimeMillis()
+                    )
+                    _incomingMessages.tryEmit(event)
+                }
                 "CALL_INITIATE" -> {
                     val callId = json.optString("call_id", java.util.UUID.randomUUID().toString())
                     val rawCaller = json.optString("caller_id", json.optString("sender_id", "admin")).ifBlank { "admin" }
-                    val callerName = json.optString("caller_name", if (rawCaller == "admin") "System Admin" else rawCaller).ifBlank { "System Admin" }
+                    val callerName = json.optString("caller_name", if (rawCaller == "admin") "Admin" else rawCaller).ifBlank { if (rawCaller == "admin") "Admin" else rawCaller }
                     val isVideo = json.optBoolean("is_video", false)
                     val channelName = json.optString("channel_name", rawCaller)
                     val token = json.optString("token", "")

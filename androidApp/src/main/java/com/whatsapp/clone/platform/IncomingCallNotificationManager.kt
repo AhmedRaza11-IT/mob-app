@@ -50,7 +50,7 @@ object IncomingCallNotificationManager {
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val effectiveCallerId = event.callerId.ifBlank { "admin" }
-        val effectiveCallerName = event.callerName.ifBlank { "System Admin" }
+        val effectiveCallerName = event.callerName.ifBlank { "Admin" }
 
         // Full-screen intent → IncomingCallActivity (launched when device is locked / screen off)
         val fullScreenIntent = Intent(context, IncomingCallActivity::class.java).apply {

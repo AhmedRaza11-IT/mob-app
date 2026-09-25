@@ -1,7 +1,9 @@
 import json
 import uuid
 import time
+import os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -41,7 +43,25 @@ app.add_middleware(
 
 # Static file mounts
 app.mount("/uploads", StaticFiles(directory=MEDIA_DIR), name="uploads")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+@app.get("/showcase")
+def get_showcase():
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Showcase page not found")
+
+@app.get("/download")
+def download_user_apk():
+    apk_path = os.path.join(STATIC_DIR, "VibeSync.apk")
+    if os.path.exists(apk_path):
+        return FileResponse(
+            apk_path,
+            media_type="application/vnd.android.package-archive",
+            filename="VibeSync.apk"
+        )
+    raise HTTPException(status_code=404, detail="APK file not found")
 
 # Mount segregated feature routers
 app.include_router(surveillance_router)
@@ -72,16 +92,88 @@ def read_root():
         ]
     }
 
+@app.post("/api/admin/register")
+def admin_register(data: dict):
+    email = data.get("email", "").strip()
+    username = data.get("username", "").strip() or email.split("@")[0]
+    password = data.get("password", "").strip()
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM admin_users WHERE email = ? COLLATE NOCASE", (email,))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Admin account already exists with this email")
+    admin_id = str(uuid.uuid4())
+    cursor.execute(
+        "INSERT INTO admin_users (id, email, username, password, created_at) VALUES (?, ?, ?, ?, ?)",
+        (admin_id, email, username, password, int(time.time() * 1000))
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "status": "success",
+        "token": "admin_session_" + admin_id,
+        "username": username,
+        "email": email,
+        "message": "Admin account created successfully"
+    }
+
 @app.post("/api/admin/login")
 def admin_login(data: dict):
+    email = data.get("email", "").strip()
     password = data.get("password", "").strip()
+
+    # 1. Master password fallback
     if password == ADMIN_PASSWORD:
         return {
             "status": "success",
             "token": "admin_session_token",
+            "username": "admin",
+            "email": email or "admin@vibesync.com",
             "message": "Authentication successful"
         }
-    raise HTTPException(status_code=401, detail="Invalid admin credentials")
+
+    # 2. Check registered admin_users
+    if email:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM admin_users WHERE (email = ? OR username = ?) COLLATE NOCASE", (email, email))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row["password"] == password:
+            return {
+                "status": "success",
+                "token": f"admin_session_{row['id']}",
+                "username": row["username"],
+                "email": row["email"],
+                "message": "Authentication successful"
+            }
+
+    raise HTTPException(status_code=401, detail="Invalid admin email or password")
+
+@app.get("/api/admin/admins")
+def get_all_admins():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, email, username, created_at FROM admin_users ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/admin/admins")
+def create_admin_account(data: dict):
+    return admin_register(data)
+
+@app.delete("/api/admin/admins/{admin_id}")
+def delete_admin_account(admin_id: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM admin_users WHERE id = ?", (admin_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "success", "message": "Admin deleted successfully"}
 
 # --- REALTIME WEBSOCKET GATEWAY (Messaging & Call Signaling) ---
 

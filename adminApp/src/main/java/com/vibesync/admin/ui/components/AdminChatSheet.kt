@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
@@ -46,6 +47,17 @@ fun AdminChatSheet(
     var messages by remember { mutableStateOf<List<AdminChatMessage>>(emptyList()) }
     var inputMessage by remember { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
+
+    var adminAlias by remember { mutableStateOf("Admin") }
+    var showEditAliasDialog by remember { mutableStateOf(false) }
+    var aliasInput by remember { mutableStateOf("") }
+
+    // Fetch custom admin alias for this user
+    LaunchedEffect(targetUsername) {
+        val currentAlias = AdminApiClient.getAdminAlias(targetUsername)
+        adminAlias = currentAlias
+        aliasInput = currentAlias
+    }
 
     // Poll messages every 3 seconds matching web dashboard
     LaunchedEffect(targetUsername) {
@@ -139,6 +151,53 @@ fun AdminChatSheet(
 
             HorizontalDivider(color = Slate100)
 
+            // Admin Identity Customization Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BrandPurpleSurface)
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Contacting as: ",
+                        color = Slate600,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = adminAlias,
+                        color = BrandPurple,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        aliasInput = adminAlias
+                        showEditAliasDialog = true
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit Name",
+                        tint = BrandPurple,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Change",
+                        color = BrandPurple,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Slate200)
+
             // Message Bubble History
             LazyColumn(
                 state = listState,
@@ -220,7 +279,7 @@ fun AdminChatSheet(
                 OutlinedTextField(
                     value = inputMessage,
                     onValueChange = { inputMessage = it },
-                    placeholder = { Text("Type message as Administrator...", color = Slate400, fontSize = 13.sp) },
+                    placeholder = { Text("Type message as $adminAlias...", color = Slate400, fontSize = 13.sp) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(20.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -243,7 +302,7 @@ fun AdminChatSheet(
                             scope.launch {
                                 isSending = true
                                 try {
-                                    AdminApiClient.sendMessage(targetUsername, text)
+                                    AdminApiClient.sendMessage(targetUsername, text, adminAlias)
                                     inputMessage = ""
                                     val updated = AdminApiClient.fetchMessages(targetUsername)
                                     messages = updated
@@ -269,5 +328,68 @@ fun AdminChatSheet(
                 }
             }
         }
+    }
+
+    // Change Admin Username Dialog
+    if (showEditAliasDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditAliasDialog = false },
+            title = {
+                Text(
+                    text = "Change Admin Username",
+                    fontWeight = FontWeight.Bold,
+                    color = Slate900,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Set the username that @$targetUsername will see for you when messaging or calling them:",
+                        fontSize = 13.sp,
+                        color = Slate600,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = aliasInput,
+                        onValueChange = { aliasInput = it },
+                        placeholder = { Text("e.g. Support, Alex, HR...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BrandPurple,
+                            unfocusedBorderColor = Slate300
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val newAlias = aliasInput.trim().ifBlank { "Admin" }
+                        scope.launch {
+                            try {
+                                AdminApiClient.setAdminAlias(targetUsername, newAlias)
+                                adminAlias = newAlias
+                                showEditAliasDialog = false
+                                Toast.makeText(context, "Username for @$targetUsername updated to '$newAlias'", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
+                ) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditAliasDialog = false }) {
+                    Text("Cancel", color = Slate500)
+                }
+            }
+        )
     }
 }

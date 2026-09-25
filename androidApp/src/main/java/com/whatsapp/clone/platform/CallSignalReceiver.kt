@@ -19,7 +19,7 @@ class CallSignalReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val callerId   = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_ID)?.ifBlank { "admin" } ?: "admin"
-        val callerName = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME)?.ifBlank { "System Admin" } ?: "System Admin"
+        val callerName = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME)?.ifBlank { "Admin" } ?: "Admin"
         val isVideo    = intent.getBooleanExtra(IncomingCallNotificationManager.EXTRA_IS_VIDEO, false)
         val channel    = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CHANNEL)?.ifBlank { "admin_call" } ?: "admin_call"
         val callId     = intent.getStringExtra(IncomingCallNotificationManager.EXTRA_CALL_ID)     ?: ""

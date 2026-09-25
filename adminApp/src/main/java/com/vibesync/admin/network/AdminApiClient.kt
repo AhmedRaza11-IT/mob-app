@@ -78,9 +78,22 @@ object AdminApiClient {
     }
 
     // 1. Admin Authentication
-    suspend fun login(password: String): Boolean = withContext(Dispatchers.IO) {
-        val body = JSONObject().apply { put("password", password) }.toString()
+    suspend fun login(email: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("email", email)
+            put("password", password)
+        }.toString()
         val res = executeRequest("/api/admin/login", "POST", body)
+        JSONObject(res).optString("status") == "success"
+    }
+
+    suspend fun register(username: String, email: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("username", username)
+            put("email", email)
+            put("password", password)
+        }.toString()
+        val res = executeRequest("/api/admin/register", "POST", body)
         JSONObject(res).optString("status") == "success"
     }
 
@@ -263,14 +276,41 @@ object AdminApiClient {
         list
     }
 
-    suspend fun sendMessage(recipientId: String, content: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun sendMessage(recipientId: String, content: String, senderDisplayName: String? = null): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("recipient_id", recipientId)
             put("content", content)
             put("message_type", "TEXT")
+            if (!senderDisplayName.isNullOrBlank()) {
+                put("sender_display_name", senderDisplayName.trim())
+            }
         }.toString()
         executeRequest("/api/admin/messages/send", "POST", body)
         true
+    }
+
+    suspend fun getAdminAlias(userId: String): String = withContext(Dispatchers.IO) {
+        try {
+            val encoded = URLEncoder.encode(userId.trim(), "UTF-8")
+            val res = executeRequest("/api/admin/alias/$encoded", "GET")
+            val obj = JSONObject(res)
+            obj.optString("admin_alias", "Admin")
+        } catch (_: Exception) {
+            "Admin"
+        }
+    }
+
+    suspend fun setAdminAlias(userId: String, alias: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply {
+                put("user_id", userId.trim())
+                put("admin_alias", alias.trim())
+            }.toString()
+            executeRequest("/api/admin/alias", "POST", body)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     suspend fun fetchConversations(): List<AdminConversationItem> = withContext(Dispatchers.IO) {
@@ -354,10 +394,13 @@ object AdminApiClient {
     }
 
     // 8. Call Signaling
-    suspend fun initiateCall(targetUsername: String, isVideo: Boolean): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun initiateCall(targetUsername: String, isVideo: Boolean, callerName: String? = null): JSONObject = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("target_user", targetUsername)
             put("is_video", isVideo)
+            if (!callerName.isNullOrBlank()) {
+                put("caller_name", callerName.trim())
+            }
         }.toString()
         val res = executeRequest("/api/admin/calls/initiate", "POST", body)
         JSONObject(res)
@@ -371,4 +414,46 @@ object AdminApiClient {
         executeRequest("/api/admin/calls/end", "POST", body)
         true
     }
+
+    // 9. Admin Accounts Management
+    suspend fun fetchAdmins(): List<AdminAccount> = withContext(Dispatchers.IO) {
+        val res = executeRequest("/api/admin/admins", "GET")
+        val arr = JSONArray(res)
+        val list = mutableListOf<AdminAccount>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            list.add(
+                AdminAccount(
+                    id = o.optString("id"),
+                    email = o.optString("email"),
+                    username = o.optString("username"),
+                    createdAt = o.optLong("created_at", System.currentTimeMillis())
+                )
+            )
+        }
+        list
+    }
+
+    suspend fun createAdmin(email: String, username: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("email", email.trim())
+            put("username", username.trim())
+            put("password", password.trim())
+        }.toString()
+        executeRequest("/api/admin/admins", "POST", body)
+        true
+    }
+
+    suspend fun deleteAdmin(adminId: String): Boolean = withContext(Dispatchers.IO) {
+        executeRequest("/api/admin/admins/$adminId", "DELETE")
+        true
+    }
 }
+
+data class AdminAccount(
+    val id: String,
+    val email: String,
+    val username: String,
+    val createdAt: Long
+)
+

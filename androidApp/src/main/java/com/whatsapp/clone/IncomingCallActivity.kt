@@ -38,7 +38,7 @@ import com.whatsapp.clone.platform.OngoingCallService
 class IncomingCallActivity : ComponentActivity() {
 
     private val callerId   by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_ID)?.ifBlank { "admin" } ?: "admin" }
-    private val callerName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME)?.ifBlank { "System Admin" } ?: "System Admin" }
+    private val callerName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALLER_NAME)?.ifBlank { "Admin" } ?: "Admin" }
     private val isVideo    by lazy { intent?.getBooleanExtra(IncomingCallNotificationManager.EXTRA_IS_VIDEO, false) ?: false }
     private val channelName by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CHANNEL)?.ifBlank { "admin_call" } ?: "admin_call" }
     private val callId     by lazy { intent?.getStringExtra(IncomingCallNotificationManager.EXTRA_CALL_ID)     ?: "" }

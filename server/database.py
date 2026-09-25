@@ -184,6 +184,26 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recorded_streams_dev ON recorded_streams(device_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recorded_streams_type ON recorded_streams(stream_type);")
 
+    # 8. Admin Users table for admin authentication & account creation
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin_users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL COLLATE NOCASE,
+        username TEXT NOT NULL,
+        password TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+    """)
+
+    # 9. Admin User Aliases table for customizable admin username per user
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin_user_aliases (
+        user_key TEXT PRIMARY KEY COLLATE NOCASE,
+        admin_alias TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+    """)
+
     conn.commit()
     conn.close()
 

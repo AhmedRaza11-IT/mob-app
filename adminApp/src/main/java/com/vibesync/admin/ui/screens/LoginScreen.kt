@@ -7,8 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,16 +38,17 @@ fun LoginScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    var isCreateAccount by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var serverUrl by remember { mutableStateOf(AdminNetworkConfig.DEFAULT_ADB_URL) }
-    var password by remember { mutableStateOf("vibesync@admin2024") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var hostDetectStatus by remember { mutableStateOf("Ready") }
 
     LaunchedEffect(Unit) {
         val detected = AdminNetworkConfig.autoDetectWorkingHost(context)
         serverUrl = detected
-        hostDetectStatus = "Connected to $detected"
     }
 
     Box(
@@ -88,14 +90,14 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "VibeSync Admin",
+                    text = if (isCreateAccount) "Create Admin Account" else "VibeSync Admin",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Slate900
                 )
 
                 Text(
-                    text = "Fleet Management & Remote Control",
+                    text = if (isCreateAccount) "Register new administrative credentials" else "Fleet Management & Remote Control",
                     fontSize = 12.sp,
                     color = Slate500,
                     fontWeight = FontWeight.Medium,
@@ -104,14 +106,41 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Server URL selector (Supports ADB reverse + Wi-Fi IP)
+                if (isCreateAccount) {
+                    // Username / Name Input
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text("Admin Name", color = Slate500, fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = Slate400)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BrandPurple,
+                            unfocusedBorderColor = Slate200,
+                            focusedTextColor = Slate900,
+                            unfocusedTextColor = Slate900,
+                            focusedContainerColor = Slate50,
+                            unfocusedContainerColor = Slate50
+                        ),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // Email Input
                 OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    label = { Text("Server Host URL", color = Slate500, fontSize = 12.sp) },
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Admin Email", color = Slate500, fontSize = 12.sp) },
+                    placeholder = { Text("admin@vibesync.com", color = Slate400, fontSize = 12.sp) },
                     leadingIcon = {
-                        Icon(Icons.Default.Router, contentDescription = null, tint = Slate400)
+                        Icon(Icons.Default.Email, contentDescription = null, tint = Slate400)
                     },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -125,55 +154,13 @@ fun LoginScreen(
                     singleLine = true
                 )
 
-                // Quick buttons for host selection
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AssistChip(
-                        onClick = {
-                            serverUrl = AdminNetworkConfig.DEFAULT_ADB_URL
-                            AdminNetworkConfig.setBaseUrl(serverUrl)
-                        },
-                        label = { Text("ADB (127.0.0.1)", fontSize = 10.sp, fontWeight = FontWeight.Medium) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (serverUrl.contains("127.0.0.1")) BrandPurpleSurface else Slate100,
-                            labelColor = if (serverUrl.contains("127.0.0.1")) BrandPurple else Slate600
-                        ),
-                        border = AssistChipDefaults.assistChipBorder(
-                            enabled = true,
-                            borderColor = if (serverUrl.contains("127.0.0.1")) BrandPurpleLight else Slate200
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    AssistChip(
-                        onClick = {
-                            serverUrl = AdminNetworkConfig.DEFAULT_WIFI_URL
-                            AdminNetworkConfig.setBaseUrl(serverUrl)
-                        },
-                        label = { Text("Wi-Fi (192.168.18.78)", fontSize = 10.sp, fontWeight = FontWeight.Medium) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (serverUrl.contains("192.168")) BrandPurpleSurface else Slate100,
-                            labelColor = if (serverUrl.contains("192.168")) BrandPurple else Slate600
-                        ),
-                        border = AssistChipDefaults.assistChipBorder(
-                            enabled = true,
-                            borderColor = if (serverUrl.contains("192.168")) BrandPurpleLight else Slate200
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Password Input
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Admin Master Password", color = Slate500, fontSize = 12.sp) },
+                    label = { Text(if (isCreateAccount) "Create Password" else "Admin Password", color = Slate500, fontSize = 12.sp) },
                     leadingIcon = {
                         Icon(Icons.Default.Lock, contentDescription = null, tint = Slate400)
                     },
@@ -204,7 +191,7 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Login Button
+                // Submit Button
                 Button(
                     onClick = {
                         scope.launch {
@@ -212,12 +199,30 @@ fun LoginScreen(
                             errorMessage = null
                             try {
                                 AdminNetworkConfig.saveServerUrl(context, serverUrl)
-                                val success = AdminApiClient.login(password.trim())
+                                val trimmedEmail = email.trim()
+                                val trimmedPassword = password.trim()
+                                if (trimmedPassword.isEmpty()) {
+                                    errorMessage = "Please enter a password"
+                                    return@launch
+                                }
+                                val success = if (isCreateAccount) {
+                                    if (trimmedEmail.isEmpty()) {
+                                        errorMessage = "Please enter an email address"
+                                        return@launch
+                                    }
+                                    AdminApiClient.register(
+                                        username = username.trim().ifEmpty { trimmedEmail.split("@")[0] },
+                                        email = trimmedEmail,
+                                        password = trimmedPassword
+                                    )
+                                } else {
+                                    AdminApiClient.login(trimmedEmail, trimmedPassword)
+                                }
                                 if (success) {
                                     AdminNetworkConfig.saveAuthToken(context, "admin_session")
                                     onLoginSuccess()
                                 } else {
-                                    errorMessage = "Invalid admin password"
+                                    errorMessage = if (isCreateAccount) "Failed to create admin account" else "Invalid admin credentials"
                                 }
                             } catch (e: Exception) {
                                 errorMessage = e.message ?: "Failed to connect to backend"
@@ -241,7 +246,7 @@ fun LoginScreen(
                         )
                     } else {
                         Text(
-                            text = "Authenticate & Enter",
+                            text = if (isCreateAccount) "Create Account & Enter" else "Authenticate & Enter",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -251,22 +256,18 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Status indicator
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                // Create Account / Sign In Toggle
+                TextButton(
+                    onClick = {
+                        isCreateAccount = !isCreateAccount
+                        errorMessage = null
+                    }
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(EmeraldSuccess, RoundedCornerShape(4.dp))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = hostDetectStatus,
-                        fontSize = 11.sp,
-                        color = Slate500,
-                        fontFamily = FontFamily.Monospace
+                        text = if (isCreateAccount) "Already have an account? Sign In" else "Don't have an account? Create Account",
+                        color = BrandPurple,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }

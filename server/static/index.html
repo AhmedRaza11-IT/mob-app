@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VibeSync - Next-Gen Glassmorphic Messaging & Calling App</title>
+  <meta name="description" content="Experience high-definition video calling, private messaging, and instant sync on Android. Powered by VibeSync Enterprise.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Background Decorative Glowing Blobs -->
+  <div class="bg-blobs">
+    <div class="blob-1"></div>
+    <div class="blob-2"></div>
+    <div class="blob-3"></div>
+  </div>
+
+  <!-- Sticky Glassmorphic Navbar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="#" class="logo-group">
+        <div class="logo-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <span class="logo-text">VibeSync</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#simulator">Phone Demo</a></li>
+        <li><a href="#install">Installation</a></li>
+        <li><a href="#download">Download APK</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button id="theme-toggle-btn" class="theme-toggle" aria-label="Toggle Dark Mode">
+          <svg id="theme-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <a href="#download" class="btn-nav-download btn-download-trigger">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Get APK</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section with Interactive Phone Simulator -->
+  <section class="hero" id="simulator">
+    <div class="container hero-grid">
+      
+      <!-- Hero Text & CTA -->
+      <div class="hero-content">
+        <div class="release-pill">
+          <span class="pulse-dot"></span>
+          <span>VibeSync v2.0 • Light Glassmorphism Edition</span>
+        </div>
+
+        <h1 class="hero-title">
+          Next-Gen Chat & Calling, <span class="gradient-text">Re-imagined.</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Experience ultra-fast real-time messaging, crystal-clear voice & video calls, and instant backend synchronization wrapped in an elegant style light glassmorphic interface.
+        </p>
+
+        <div class="hero-cta">
+          <a href="#download" class="btn-primary btn-download-trigger">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Download User APK (v2.0)</span>
+          </a>
+
+          <a href="#features" class="btn-secondary">
+            <span>Explore Architecture</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </a>
+        </div>
+
+        <div class="meta-stats">
+          <div class="meta-stat-item">
+            <h4>100%</h4>
+            <p>Native Jetpack Compose</p>
+          </div>
+          <div class="meta-stat-item">
+            <h4>&lt; 50ms</h4>
+            <p>Instant Real-Time Sync</p>
+          </div>
+          <div class="meta-stat-item">
+            <h4>100%</h4>
+            <p>Privacy Protected</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Phone Simulator Mockup -->
+      <div class="phone-mockup-container">
+        <div class="phone-glow-bg"></div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+
+            <!-- Phone Top Status Bar -->
+            <div class="phone-status-bar">
+              <span id="phone-clock">10:42</span>
+              <div class="phone-notch"></div>
+              <div class="status-icons">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="6" width="18" height="12" rx="2" ry="2"></rect><line x1="23" y1="11" x2="23" y2="13"></line></svg>
+              </div>
+            </div>
+
+            <!-- VibeSync App Header -->
+            <div class="app-header">
+              <div class="app-title-group">
+                <h3>VibeSync</h3>
+              </div>
+              <div class="app-header-icons">
+                <button class="app-icon-btn" title="Camera" onclick="showToast('Camera stream active 📷')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                </button>
+                <button class="app-icon-btn" title="Settings" onclick="showToast('Profile & Settings')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="app-search-box">
+              <div class="search-input-pill">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="phone-search-input" placeholder="Search chats or messages...">
+              </div>
+            </div>
+
+            <!-- Filter Chips -->
+            <div class="app-chips">
+              <button class="chip-btn active" data-category="All">All</button>
+              <button class="chip-btn" data-category="Unread">Unread (3)</button>
+              <button class="chip-btn" data-category="Friends">Friends</button>
+              <button class="chip-btn" data-category="Admin">Admin</button>
+            </div>
+
+            <!-- Active View Containers -->
+            <div class="app-scroll-content">
+              <!-- Chats Tab View -->
+              <div id="phone-chats-view">
+                <div id="phone-chats-container"></div>
+              </div>
+
+              <!-- Friends Tab View -->
+              <div id="phone-friends-view" style="display: none;">
+                <div id="phone-friends-container"></div>
+              </div>
+
+              <!-- Calls Tab View -->
+              <div id="phone-calls-view" style="display: none;">
+                <div id="phone-calls-container"></div>
+              </div>
+            </div>
+
+            <!-- Floating Action Button -->
+            <button class="phone-fab" onclick="showToast('Starting new chat...')">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+
+            <!-- Bottom Navigation Bar -->
+            <div class="phone-bottom-nav">
+              <button class="nav-tab-btn active" data-tab="chats">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>Chats</span>
+                <span class="tab-badge">3</span>
+              </button>
+              <button class="nav-tab-btn" data-tab="friends">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <span>Friends</span>
+              </button>
+              <button class="nav-tab-btn" data-tab="calls">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                <span>Calls</span>
+              </button>
+            </div>
+
+            <!-- Slide-in Interactive Chat Screen -->
+            <div id="phone-chat-screen" class="phone-chat-screen">
+              <div class="chat-screen-header">
+                <button id="chat-back-btn" class="back-btn">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <div id="chat-screen-contact-avatar" class="chat-header-avatar">SC</div>
+                <div class="chat-header-info">
+                  <div id="chat-screen-contact-name" class="chat-header-name">Sarah Connor</div>
+                  <div class="chat-header-status">Online</div>
+                </div>
+                <button class="app-icon-btn" onclick="showToast('Calling...')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                </button>
+              </div>
+
+              <div id="chat-screen-messages" class="chat-messages-area"></div>
+
+              <div class="chat-input-bar">
+                <input type="text" id="chat-msg-input" class="chat-input-field" placeholder="Type a message...">
+                <button id="chat-send-btn" class="chat-send-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Privacy & Security First</span>
+        <h2 class="section-title">Fully Protected. Privacy Guaranteed.</h2>
+        <p class="section-subtitle">
+          Engineered from the ground up to protect your digital presence with zero-knowledge safeguards, end-to-end security, and an ultra-modern glassmorphic design.
+        </p>
+      </div>
+
+      <div class="features-grid">
+        
+        <div class="feature-card">
+          <div class="feature-icon-box">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </div>
+          <h3>Fully Protected & Encrypted</h3>
+          <p>
+            Every single message, media attachment, and interaction is protected with top-tier cryptographic security so only you and your contact hold the keys.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </div>
+          <h3>Privacy Protected & Zero-Tracking</h3>
+          <p>
+            Your personal conversations remain your own. Zero metadata harvesting, no intrusive trackers, and absolute data confidentiality by default.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+          </div>
+          <h3>Secure HD Voice & Video Calling</h3>
+          <p>
+            Experience crystal-clear, lag-free audio and video communication with secure peer-to-peer pipelines and background call alerts.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          </div>
+          <h3>Light Glassmorphic UI</h3>
+          <p>
+            Crisp, daylight-optimized theme with frosted glass navigation, dynamic search bar, unread filter chips, and floating chat creation buttons.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </div>
+          <h3>Tamper-Proof Account Shield</h3>
+          <p>
+            Advanced biometric and cryptographic token authentication prevents unauthorized account takeovers and guards your device sessions.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-box">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          </div>
+          <h3>Instant Sync & Real-Time Delivery</h3>
+          <p>
+            Sub-millisecond message dispatch, real-time typing indicators, presence status badges, and offline message queueing with zero delays.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Section with QR Code -->
+  <section class="download-section" id="download">
+    <div class="container">
+      <div class="download-banner">
+        
+        <div class="download-info">
+          <h2>Ready to Install VibeSync?</h2>
+          <p>
+            Download the latest debug release APK directly onto your Android device or scan the QR code to install over Wi-Fi.
+          </p>
+
+          <div class="specs-list">
+            <div class="spec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Version: 2.0.0 (Latest Release)</span>
+            </div>
+            <div class="spec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Package: com.vibesync.clone</span>
+            </div>
+            <div class="spec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>File Size: ~312 MB</span>
+            </div>
+            <div class="spec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Android: 8.0 (Oreo) and above</span>
+            </div>
+          </div>
+
+          <div class="download-actions">
+            <a href="/download" class="btn-download-apk btn-download-trigger" download="VibeSync.apk">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Download VibeSync APK</span>
+            </a>
+
+            <button id="btn-copy-apk-link" class="btn-copy-link">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>Copy Link</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Scan to Download QR Code -->
+        <div class="qr-container">
+          <div class="qr-card">
+            <div class="qr-box">
+              <img id="download-qr-img" src="" alt="Scan QR Code to Download APK">
+            </div>
+            <h4>Scan to Download</h4>
+            <p>Point your phone camera to download directly on mobile.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Installation Steps -->
+      <div class="install-steps" id="install">
+        <div class="step-card">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Download APK</h4>
+            <p>Click the download button above or scan the QR code using your phone's browser.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Allow Installation</h4>
+            <p>If prompted by Android, enable "Install unknown apps" for your browser.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Open & Connect</h4>
+            <p>Launch VibeSync, log in, and experience seamless glassmorphic messaging!</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-brand">
+          <div class="logo-group">
+            <div class="logo-badge">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <span class="logo-text">VibeSync</span>
+          </div>
+          <p>Fully Protected, Privacy-First Android Communication Suite</p>
+        </div>
+
+        <ul class="footer-links">
+          <li><a href="#simulator">Simulator</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#download">Download</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 VibeSync. Built with Jetpack Compose, FastAPI & Modern Glassmorphic Web Architecture.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
