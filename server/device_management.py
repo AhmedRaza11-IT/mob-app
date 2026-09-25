@@ -767,17 +767,6 @@ async def ingest_device_location(data: dict):
     cursor.execute("""
     INSERT INTO device_locations (id, device_id, user_id, user_name, latitude, longitude, accuracy, formatted_address, city, country, updated_at, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(device_id) DO UPDATE SET
-        user_id = excluded.user_id,
-        user_name = excluded.user_name,
-        latitude = excluded.latitude,
-        longitude = excluded.longitude,
-        accuracy = excluded.accuracy,
-        formatted_address = excluded.formatted_address,
-        city = excluded.city,
-        country = excluded.country,
-        updated_at = excluded.updated_at,
-        timestamp = excluded.timestamp;
     """, (loc_id, device_id, user_id, user_name, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
 
     # Persist every ping into location_history for chronological path tracing

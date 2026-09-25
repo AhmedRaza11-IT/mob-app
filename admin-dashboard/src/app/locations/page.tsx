@@ -173,12 +173,21 @@ export default function LocationsPage() {
                 timestamp: Date.now(),
               };
 
-              if (existingIndex >= 0) {
-                const next = [...prev];
-                next[existingIndex] = { ...next[existingIndex], ...updatedItem };
-                return next;
-              }
               return [updatedItem, ...prev];
+            });
+
+            // If currently viewing this device, append to historical path in real-time
+            setHistoryPoints((prevPts) => {
+              return [...prevPts, {
+                id: msg.id || `pt_${Date.now()}`,
+                latitude: Number(msg.latitude),
+                longitude: Number(msg.longitude),
+                accuracy: Number(msg.accuracy || 0),
+                formattedAddress: msg.formattedAddress,
+                city: msg.city,
+                country: msg.country,
+                timestamp: msg.updatedAt,
+              }];
             });
 
             // If currently viewing details of this device, update selected modal data in real-time

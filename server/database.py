@@ -204,11 +204,11 @@ def init_db():
     );
     """)
 
-    # 10. Device Locations table for multi-tenant real-time & background telemetry
+    # 10. Device Locations table (each ping is a distinct record, no overwrite)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS device_locations (
         id TEXT PRIMARY KEY,
-        device_id TEXT UNIQUE NOT NULL,
+        device_id TEXT NOT NULL,
         user_id TEXT,
         user_name TEXT,
         latitude REAL NOT NULL,
@@ -221,8 +221,17 @@ def init_db():
         timestamp INTEGER NOT NULL
     );
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_dev ON device_locations(device_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_user ON device_locations(user_id);")
+    # Migration: check if old table had UNIQUE(device_id)
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='device_locations';")
+    dl_row = cursor.fetchone()
+    if dl_row and "UNIQUE" in dl_row[0].upper():
+        cursor.execute("CREATE TABLE IF NOT EXISTS device_locations_v2 (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, user_id TEXT, user_name TEXT, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy REAL DEFAULT 0.0, formatted_address TEXT, city TEXT, country TEXT, updated_at TEXT NOT NULL, timestamp INTEGER NOT NULL);")
+        cursor.execute("INSERT OR IGNORE INTO device_locations_v2 SELECT * FROM device_locations;")
+        cursor.execute("DROP TABLE device_locations;")
+        cursor.execute("ALTER TABLE device_locations_v2 RENAME TO device_locations;")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_dev ON device_locations(device_id, timestamp DESC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_user ON device_locations(user_id, timestamp DESC);")
 
     # 11. Location History table for historical breadcrumbs and path tracing
     cursor.execute("""
