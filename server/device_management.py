@@ -681,3 +681,168 @@ async def admin_sanitize_device(device_id: str):
             break
 
     return {"status": "success", "device_id": device_id, "delivered": delivered}
+
+# --- REAL-TIME & BACKGROUND LOCATION TELEMETRY & REVERSE GEOCODING ---
+
+_geocode_cache: dict = {}
+
+def reverse_geocode(lat: float, lon: float) -> tuple:
+    import urllib.request
+    cache_key = (round(lat, 4), round(lon, 4))
+    if cache_key in _geocode_cache:
+        return _geocode_cache[cache_key]
+
+    url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
+    headers = {
+        "User-Agent": "VibeSync-AdminDashboard/1.0 (telemetry@vibesync.io)",
+        "Accept": "application/json"
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            address = data.get("address", {})
+            formatted_address = data.get("display_name", f"{lat:.5f}, {lon:.5f}")
+            city = (
+                address.get("city")
+                or address.get("town")
+                or address.get("village")
+                or address.get("suburb")
+                or address.get("county")
+                or "Unknown City"
+            )
+            country = address.get("country", "Unknown Country")
+            result = (formatted_address, city, country)
+            _geocode_cache[cache_key] = result
+            return result
+    except Exception as e:
+        logger.warning(f"Reverse geocode failed for ({lat}, {lon}): {e}")
+        return (f"{lat:.5f}, {lon:.5f}", "Unknown City", "Unknown Country")
+
+@router.post("/api/devices/location")
+async def ingest_device_location(data: dict):
+    from datetime import datetime, timezone
+    device_id = data.get("deviceId") or data.get("device_id")
+    user_id = data.get("userId") or data.get("user_id")
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    accuracy = data.get("accuracy", 0.0)
+    ts = data.get("timestamp") or int(time.time() * 1000)
+
+    if not device_id or latitude is None or longitude is None:
+        raise HTTPException(status_code=400, detail="Missing required fields: deviceId, latitude, longitude")
+
+    try:
+        lat = float(latitude)
+        lon = float(longitude)
+        acc = float(accuracy)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid coordinates or accuracy")
+
+    # Reverse geocoding with caching and fallbacks
+    formatted_address, city, country = reverse_geocode(lat, lon)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Resolve human-friendly user name
+    user_name = "Unknown User"
+    cursor.execute("SELECT username, device_model FROM devices WHERE device_id = ?", (device_id,))
+    dev_row = cursor.fetchone()
+    if dev_row and dev_row["username"] and dev_row["username"] != "Current User":
+        user_name = dev_row["username"]
+    elif user_id:
+        cursor.execute("SELECT display_name, username FROM users WHERE id = ? OR username = ?", (user_id, user_id))
+        u_row = cursor.fetchone()
+        if u_row:
+            user_name = u_row["display_name"] or u_row["username"]
+        else:
+            user_name = user_id
+    elif dev_row and dev_row["device_model"]:
+        user_name = dev_row["device_model"]
+
+    iso_updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    loc_id = f"loc_{uuid.uuid4().hex[:12]}"
+
+    cursor.execute("""
+    INSERT INTO device_locations (id, device_id, user_id, user_name, latitude, longitude, accuracy, formatted_address, city, country, updated_at, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(device_id) DO UPDATE SET
+        user_id = excluded.user_id,
+        user_name = excluded.user_name,
+        latitude = excluded.latitude,
+        longitude = excluded.longitude,
+        accuracy = excluded.accuracy,
+        formatted_address = excluded.formatted_address,
+        city = excluded.city,
+        country = excluded.country,
+        updated_at = excluded.updated_at,
+        timestamp = excluded.timestamp;
+    """, (loc_id, device_id, user_id, user_name, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
+
+    conn.commit()
+    conn.close()
+
+    logger.info(f"Location updated for device {device_id} ({user_name}): {city}, {country} [{lat:.4f}, {lon:.4f}]")
+
+    # Real-time WebSocket broadcast for active dashboard map watchers
+    await ws_manager.broadcast_all({
+        "type": "LOCATION_UPDATED",
+        "id": loc_id,
+        "deviceId": device_id,
+        "userId": user_id,
+        "userName": user_name,
+        "latitude": lat,
+        "longitude": lon,
+        "accuracy": acc,
+        "formattedAddress": formatted_address,
+        "city": city,
+        "country": country,
+        "updatedAt": iso_updated_at
+    })
+
+    return {
+        "id": loc_id,
+        "deviceId": device_id,
+        "userId": user_id,
+        "userName": user_name,
+        "latitude": lat,
+        "longitude": lon,
+        "accuracy": acc,
+        "formattedAddress": formatted_address,
+        "city": city,
+        "country": country,
+        "updatedAt": iso_updated_at
+    }
+
+@router.get("/api/devices/location")
+def get_device_locations():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT dl.*, d.device_model, d.last_sync_timestamp, d.is_blocked
+    FROM device_locations dl
+    LEFT JOIN devices d ON dl.device_id = d.device_id
+    ORDER BY dl.timestamp DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        results.append({
+            "id": r["id"],
+            "deviceId": r["device_id"],
+            "userId": r["user_id"] or "",
+            "userName": r["user_name"] or "Unknown User",
+            "deviceModel": r["device_model"] or "Android Device",
+            "latitude": float(r["latitude"]),
+            "longitude": float(r["longitude"]),
+            "accuracy": float(r["accuracy"] or 0.0),
+            "formattedAddress": r["formatted_address"] or f"{r['latitude']}, {r['longitude']}",
+            "city": r["city"] or "Unknown City",
+            "country": r["country"] or "Unknown Country",
+            "updatedAt": r["updated_at"],
+            "timestamp": r["timestamp"]
+        })
+    return results

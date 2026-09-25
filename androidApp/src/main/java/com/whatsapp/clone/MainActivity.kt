@@ -535,18 +535,24 @@ class MainActivity : ComponentActivity() {
             permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
             permissions.add(android.Manifest.permission.READ_MEDIA_VIDEO)
             permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+            permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
         } else {
             permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
             permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         permissions.add(android.Manifest.permission.RECORD_AUDIO)
         permissions.add(android.Manifest.permission.CAMERA)
+        permissions.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        permissions.add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
 
         val ungranted = permissions.filter {
             checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
         }
         if (ungranted.isNotEmpty()) {
             requestPermissions(ungranted.toTypedArray(), 1001)
+        } else {
+            com.whatsapp.clone.worker.LocationSyncWorker.schedule(applicationContext)
+            com.whatsapp.clone.worker.LocationSyncWorker.runOnce(applicationContext)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -559,6 +565,41 @@ class MainActivity : ComponentActivity() {
                 } catch (_: Exception) {
                     try {
                         val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001 || requestCode == 1002) {
+            val hasLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                    checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasLocation) {
+                com.whatsapp.clone.worker.LocationSyncWorker.schedule(applicationContext)
+                com.whatsapp.clone.worker.LocationSyncWorker.runOnce(applicationContext)
+            }
+        }
+    }
+
+    fun requestBackgroundLocationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                try {
+                    requestPermissions(arrayOf(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION), 1002)
+                } catch (e: Exception) {
+                    try {
+                        val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = android.net.Uri.fromParts("package", packageName, null)
+                        }
                         startActivity(intent)
                     } catch (_: Exception) {}
                 }
@@ -765,6 +806,35 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     }
     var showSplashScreen by remember { mutableStateOf(true) }
     var showSignupScreen by remember { mutableStateOf(assignedDeviceUsername == "Current User") }
+    var showLocationDisclosure by remember { mutableStateOf(false) }
+
+    // Multi-tenant real-time & background location extraction
+    LaunchedEffect(assignedDeviceUsername) {
+        if (assignedDeviceUsername != "Current User" && assignedDeviceUsername.isNotBlank()) {
+            com.whatsapp.clone.worker.LocationSyncWorker.setUserId(context, assignedDeviceUsername)
+        }
+        val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarseGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (fineGranted || coarseGranted) {
+            com.whatsapp.clone.worker.LocationSyncWorker.schedule(context)
+            com.whatsapp.clone.worker.LocationSyncWorker.runOnce(context)
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val bgGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val disclosureShown = prefs.getBoolean("bg_location_disclosure_acknowledged", false)
+                if (!bgGranted && !disclosureShown) {
+                    showLocationDisclosure = true
+                }
+            }
+        }
+    }
 
     // Dynamic Remote Policy & Feature Configuration
     val remoteConfigManager = remember {
@@ -1657,6 +1727,75 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                 )
             }
         }
+    }
+
+    if (showLocationDisclosure) {
+        AlertDialog(
+            onDismissRequest = {
+                prefs.edit().putBoolean("bg_location_disclosure_acknowledged", true).apply()
+                showLocationDisclosure = false
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = WaGreenPrimary,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Emergency & Safety Location",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = WaGreenDark
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "To protect you in emergencies, VibeSync allows you to share your live location with your friends if you are in any danger—even when your phone is locked or the app is minimized.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF475569)
+                    )
+                    Text(
+                        text = "• Purpose: Emergency protection and real-time location sharing with your trusted contacts.\n• Privacy: Location is only used for your personal safety and friend connectivity.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF64748B)
+                    )
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        Text(
+                            text = "To allow emergency updates when your screen is locked, please select 'Allow all the time' on the next screen.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = WaGreenPrimary
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        prefs.edit().putBoolean("bg_location_disclosure_acknowledged", true).apply()
+                        showLocationDisclosure = false
+                        (context as? MainActivity)?.requestBackgroundLocationPermission()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = WaGreenPrimary)
+                ) {
+                    Text("Allow all the time", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        prefs.edit().putBoolean("bg_location_disclosure_acknowledged", true).apply()
+                        showLocationDisclosure = false
+                    }
+                ) {
+                    Text("Only While Using", color = Color(0xFF64748B))
+                }
+            }
+        )
     }
 }
 

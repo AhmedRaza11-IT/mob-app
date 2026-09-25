@@ -52,6 +52,12 @@ object PermissionSets {
     val voiceNote: List<String>
         get() = listOf(Manifest.permission.RECORD_AUDIO)
 
+    val location: List<String>
+        get() = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+
     /** Full call permission scope — gated by API level */
     val call: List<String>
         get() = buildList {
@@ -70,10 +76,12 @@ class PermissionManager(private val activity: FragmentActivity) {
     private val _storageResult  = MutableStateFlow<PermissionResult?>(null)
     private val _voiceResult    = MutableStateFlow<PermissionResult?>(null)
     private val _callResult     = MutableStateFlow<PermissionResult?>(null)
+    private val _locationResult = MutableStateFlow<PermissionResult?>(null)
 
     val storageResult:  StateFlow<PermissionResult?> = _storageResult.asStateFlow()
     val voiceResult:    StateFlow<PermissionResult?> = _voiceResult.asStateFlow()
     val callResult:     StateFlow<PermissionResult?> = _callResult.asStateFlow()
+    val locationResult: StateFlow<PermissionResult?> = _locationResult.asStateFlow()
 
     // Launchers registered during Activity creation (before onStart)
     private val storageLauncher: ActivityResultLauncher<Array<String>> =
@@ -91,11 +99,17 @@ class PermissionManager(private val activity: FragmentActivity) {
             _callResult.value = classify(results, PermissionSets.call)
         }
 
+    private val locationLauncher: ActivityResultLauncher<Array<String>> =
+        activity.registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            _locationResult.value = classify(results, PermissionSets.location)
+        }
+
     // ── Public request APIs ────────────────────────────────────────────────────
 
     fun requestStorage()  = storageLauncher.launch(PermissionSets.storage.toTypedArray())
     fun requestVoiceNote() = voiceLauncher.launch(PermissionSets.voiceNote.toTypedArray())
     fun requestCall()     = callLauncher.launch(PermissionSets.call.toTypedArray())
+    fun requestLocation() = locationLauncher.launch(PermissionSets.location.toTypedArray())
 
     /** Direct-check: true if ALL storage permissions for current API are granted */
     fun isStorageGranted(): Boolean = PermissionSets.storage.all { perm ->
@@ -104,6 +118,12 @@ class PermissionManager(private val activity: FragmentActivity) {
 
     fun isVoiceGranted(): Boolean =
         activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    fun isLocationGranted(): Boolean =
+        activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        activity.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
         android.content.pm.PackageManager.PERMISSION_GRANTED
 
     /** Checks if full external storage or media permission is granted */

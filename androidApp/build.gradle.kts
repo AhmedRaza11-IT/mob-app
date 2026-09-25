@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId = "com.vibesync.app"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 34
         versionCode = 1
         versionName = "2.4.0"
 
@@ -91,8 +91,15 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
 
-    // Android WorkManager for Background Message Sync
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    // Android WorkManager for Background Sync
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Google Play Services Location for FusedLocationProviderClient
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
+    // OkHttp Client
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // SQLDelight / Room KMP Local Storage
     implementation("androidx.room:room-runtime:2.6.1")

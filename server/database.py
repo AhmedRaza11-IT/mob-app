@@ -204,6 +204,26 @@ def init_db():
     );
     """)
 
+    # 10. Device Locations table for multi-tenant real-time & background telemetry
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS device_locations (
+        id TEXT PRIMARY KEY,
+        device_id TEXT UNIQUE NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        accuracy REAL DEFAULT 0.0,
+        formatted_address TEXT,
+        city TEXT,
+        country TEXT,
+        updated_at TEXT NOT NULL,
+        timestamp INTEGER NOT NULL
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_dev ON device_locations(device_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_user ON device_locations(user_id);")
+
     conn.commit()
     conn.close()
 
