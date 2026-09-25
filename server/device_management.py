@@ -843,6 +843,53 @@ def get_device_locations():
         })
     return results
 
+@router.post("/api/devices/location/interval")
+async def set_device_location_interval(data: dict):
+    device_id = data.get("deviceId") or data.get("device_id")
+    user_id = data.get("userId") or data.get("user_id")
+    timeframe = (data.get("timeframe") or "1m").lower().strip()
+
+    interval_minutes = 60
+    if timeframe.endswith("m"):
+        try:
+            interval_minutes = int(timeframe[:-1])
+        except ValueError:
+            interval_minutes = 1
+    elif timeframe.endswith("h"):
+        try:
+            interval_minutes = int(timeframe[:-1]) * 60
+        except ValueError:
+            interval_minutes = 60
+    elif timeframe.endswith("d"):
+        try:
+            interval_minutes = int(timeframe[:-1]) * 1440
+        except ValueError:
+            interval_minutes = 1440
+    elif timeframe == "all":
+        interval_minutes = 60
+
+    if not device_id and not user_id:
+        raise HTTPException(status_code=400, detail="Missing deviceId or userId")
+
+    logger.info(f"Setting location tracking interval to {interval_minutes}m ({timeframe}) for dev={device_id}, user={user_id}")
+
+    # Broadcast to device via WebSocket
+    await ws_manager.broadcast_all({
+        "type": "SET_LOCATION_INTERVAL",
+        "deviceId": device_id,
+        "userId": user_id,
+        "intervalMinutes": interval_minutes,
+        "timeframe": timeframe
+    })
+
+    return {
+        "status": "success",
+        "deviceId": device_id,
+        "userId": user_id,
+        "intervalMinutes": interval_minutes,
+        "timeframe": timeframe
+    }
+
 @router.get("/api/devices/location/history")
 def get_device_location_history(
     userId: Optional[str] = None,

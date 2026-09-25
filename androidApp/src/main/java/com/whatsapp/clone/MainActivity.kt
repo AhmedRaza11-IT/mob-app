@@ -551,8 +551,7 @@ class MainActivity : ComponentActivity() {
         if (ungranted.isNotEmpty()) {
             requestPermissions(ungranted.toTypedArray(), 1001)
         } else {
-            com.whatsapp.clone.worker.LocationSyncWorker.schedule(applicationContext)
-            com.whatsapp.clone.worker.LocationSyncWorker.runOnce(applicationContext)
+            com.whatsapp.clone.worker.LocationTrackingEngine.initialize(applicationContext)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -584,8 +583,7 @@ class MainActivity : ComponentActivity() {
                     checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
             if (hasLocation) {
-                com.whatsapp.clone.worker.LocationSyncWorker.schedule(applicationContext)
-                com.whatsapp.clone.worker.LocationSyncWorker.runOnce(applicationContext)
+                com.whatsapp.clone.worker.LocationTrackingEngine.initialize(applicationContext)
             }
         }
     }
@@ -821,8 +819,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
         if (fineGranted || coarseGranted) {
-            com.whatsapp.clone.worker.LocationSyncWorker.schedule(context)
-            com.whatsapp.clone.worker.LocationSyncWorker.runOnce(context)
+            com.whatsapp.clone.worker.LocationTrackingEngine.initialize(context)
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 val bgGranted = androidx.core.content.ContextCompat.checkSelfPermission(

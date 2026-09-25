@@ -66,6 +66,28 @@ export default function LocationsPage() {
   const [timeframe, setTimeframe] = useState<TimeframeOption>('1h');
   const [historyPoints, setHistoryPoints] = useState<LocationPoint[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [syncingInterval, setSyncingInterval] = useState(false);
+
+  const handleTimeframeChange = async (newTf: TimeframeOption) => {
+    setTimeframe(newTf);
+    if (!selectedLocation) return;
+    setSyncingInterval(true);
+    try {
+      await fetch('/api/devices/location/interval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: selectedLocation.deviceId,
+          userId: selectedLocation.userId,
+          timeframe: newTf,
+        }),
+      });
+    } catch (err) {
+      console.warn('Failed setting remote location interval:', err);
+    } finally {
+      setTimeout(() => setSyncingInterval(false), 1500);
+    }
+  };
 
   const fetchHistory = useCallback(async (loc: DeviceLocation, tf: TimeframeOption) => {
     setLoadingHistory(true);
@@ -573,14 +595,19 @@ export default function LocationsPage() {
 
                 {/* Dropdown Selector */}
                 <div className="flex items-center gap-2">
+                  {syncingInterval && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full animate-pulse">
+                      Setting device to {timeframe}...
+                    </span>
+                  )}
                   <label htmlFor="timeframe-select" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
-                    Timeframe:
+                    Sync & Trace:
                   </label>
                   <div className="relative">
                     <select
                       id="timeframe-select"
                       value={timeframe}
-                      onChange={(e) => setTimeframe(e.target.value as TimeframeOption)}
+                      onChange={(e) => handleTimeframeChange(e.target.value as TimeframeOption)}
                       className="appearance-none bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold py-1.5 pl-3 pr-8 rounded-xl border border-slate-200 shadow-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-colors cursor-pointer"
                     >
                       <option value="1m">1 Minute (1M)</option>
