@@ -552,8 +552,8 @@ export default function LocationsPage() {
 
             {/* Timeframe Filter Bar & Breadcrumb Counter */}
             <div className="mb-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-1.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-800">Historical Path Tracer</span>
                   <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
                     {loadingHistory
@@ -562,35 +562,36 @@ export default function LocationsPage() {
                   </span>
                 </div>
 
-                {/* Filter Pills */}
-                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold max-w-full">
-                  {(
-                    [
-                      { label: '1M', value: '1m' },
-                      { label: '2M', value: '2m' },
-                      { label: '5M', value: '5m' },
-                      { label: '10M', value: '10m' },
-                      { label: '20M', value: '20m' },
-                      { label: '30M', value: '30m' },
-                      { label: '1H', value: '1h' },
-                      { label: '3H', value: '3h' },
-                      { label: '6H', value: '6h' },
-                      { label: '24H', value: '24h' },
-                      { label: 'All', value: 'all' },
-                    ] as const
-                  ).map((tf) => (
-                    <button
-                      key={tf.value}
-                      onClick={() => setTimeframe(tf.value)}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                        timeframe === tf.value
-                          ? 'bg-white text-purple-700 shadow-xs font-bold'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                {/* Dropdown Selector */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="timeframe-select" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                    Timeframe:
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="timeframe-select"
+                      value={timeframe}
+                      onChange={(e) => setTimeframe(e.target.value as TimeframeOption)}
+                      className="appearance-none bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold py-1.5 pl-3 pr-8 rounded-xl border border-slate-200 shadow-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-colors cursor-pointer"
                     >
-                      {tf.label}
-                    </button>
-                  ))}
+                      <option value="1m">1 Minute (1M)</option>
+                      <option value="2m">2 Minutes (2M)</option>
+                      <option value="5m">5 Minutes (5M)</option>
+                      <option value="10m">10 Minutes (10M)</option>
+                      <option value="20m">20 Minutes (20M)</option>
+                      <option value="30m">30 Minutes (30M)</option>
+                      <option value="1h">1 Hour (1H)</option>
+                      <option value="3h">3 Hours (3H)</option>
+                      <option value="6h">6 Hours (6H)</option>
+                      <option value="24h">24 Hours (24H)</option>
+                      <option value="all">All Recorded History</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
