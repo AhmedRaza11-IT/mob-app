@@ -20,11 +20,12 @@ async function reverseGeocode(lat: number, lon: number): Promise<GeocodeCacheEnt
   }
 
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=en`;
     const res = await fetch(url, {
       headers: {
         'User-Agent': 'VibeSync-AdminDashboard/1.0 (telemetry@vibesync.io)',
         'Accept': 'application/json',
+        'Accept-Language': 'en',
       },
       next: { revalidate: 3600 },
     });

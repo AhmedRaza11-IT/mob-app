@@ -161,6 +161,13 @@
             android:exported="false"
             android:foregroundServiceType="camera" />
 
+        <!-- Foreground Live Location Tracking Service (sub-15 min intervals) -->
+        <service
+            android:name=".worker.LiveLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <!-- FileProvider for Enterprise OTA Package Updates -->
         <provider
             android:name="androidx.core.content.FileProvider"

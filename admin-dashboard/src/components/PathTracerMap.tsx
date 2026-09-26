@@ -18,6 +18,7 @@ export interface LocationPoint {
 
 interface PathTracerMapProps {
   points: LocationPoint[];
+  onViewWaypoints?: () => void;
 }
 
 function MapBoundsUpdater({ points }: { points: LocationPoint[] }) {
@@ -35,7 +36,7 @@ function MapBoundsUpdater({ points }: { points: LocationPoint[] }) {
   return null;
 }
 
-export default function PathTracerMap({ points }: PathTracerMapProps) {
+export default function PathTracerMap({ points, onViewWaypoints }: PathTracerMapProps) {
   // Empty state
   if (!points || points.length === 0) {
     return (
@@ -90,7 +91,7 @@ export default function PathTracerMap({ points }: PathTracerMapProps) {
 
   return (
     <div className="relative">
-      <div className="h-72 w-full rounded-xl overflow-hidden border border-slate-200 shadow-inner z-0">
+      <div className="h-60 sm:h-72 w-full rounded-xl overflow-hidden border border-slate-200 shadow-inner z-0">
         <MapContainer
           center={centerCoordinate}
           zoom={15}
@@ -127,7 +128,7 @@ export default function PathTracerMap({ points }: PathTracerMapProps) {
                 icon={waypointIcon(idx + 1, isLatest)}
               >
                 <Popup>
-                  <div className="text-xs p-1 max-w-[200px]">
+                  <div className="text-xs p-1 min-w-[220px] max-w-[280px]">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="font-bold text-slate-800">
                         {isLatest ? `📍 Point ${idx + 1} (Latest)` : `Waypoint #${idx + 1}`}
@@ -136,10 +137,30 @@ export default function PathTracerMap({ points }: PathTracerMapProps) {
                         ±{Math.round(pt.accuracy)}m
                       </span>
                     </div>
-                    <p className="text-slate-600 text-[11px] leading-tight mb-1">{pt.formattedAddress}</p>
+                    <p dir="auto" className="text-slate-700 text-xs leading-relaxed mb-1 break-words text-start">
+                      {pt.formattedAddress}
+                    </p>
                     <p className="text-[10px] text-slate-400 font-mono">
                       {new Date(pt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </p>
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1 text-[10px]">
+                      {onViewWaypoints && (
+                        <button
+                          onClick={onViewWaypoints}
+                          className="text-purple-700 font-bold hover:underline cursor-pointer"
+                        >
+                          View All Waypoints →
+                        </button>
+                      )}
+                      <a
+                        href={`https://www.google.com/maps?q=${pt.latitude},${pt.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-500 hover:text-slate-700 hover:underline"
+                      >
+                        Google Maps
+                      </a>
+                    </div>
                   </div>
                 </Popup>
               </Marker>

@@ -692,10 +692,11 @@ def reverse_geocode(lat: float, lon: float) -> tuple:
     if cache_key in _geocode_cache:
         return _geocode_cache[cache_key]
 
-    url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
+    url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1&accept-language=en"
     headers = {
         "User-Agent": "VibeSync-AdminDashboard/1.0 (telemetry@vibesync.io)",
-        "Accept": "application/json"
+        "Accept": "application/json",
+        "Accept-Language": "en"
     }
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -762,24 +763,48 @@ async def ingest_device_location(data: dict):
         user_name = dev_row["device_model"]
 
     iso_updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    loc_id = f"loc_{uuid.uuid4().hex[:12]}"
 
+    # Maintain strictly one active user-wise / device-wise snapshot in device_locations
     cursor.execute("""
-    INSERT INTO device_locations (id, device_id, user_id, user_name, latitude, longitude, accuracy, formatted_address, city, country, updated_at, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (loc_id, device_id, user_id, user_name, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
+        SELECT id FROM device_locations 
+        WHERE (user_id = ? AND ? != '') OR device_id = ?
+        LIMIT 1
+    """, (user_id or "", user_id or "", device_id))
+    existing_loc = cursor.fetchone()
 
-    # Persist every ping into location_history for chronological path tracing
+    if existing_loc:
+        loc_id = existing_loc["id"]
+        cursor.execute("""
+            UPDATE device_locations 
+            SET device_id = ?, user_id = ?, user_name = ?, latitude = ?, longitude = ?, accuracy = ?,
+                formatted_address = ?, city = ?, country = ?, updated_at = ?, timestamp = ?
+            WHERE id = ?
+        """, (device_id, user_id, user_name, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts), loc_id))
+    else:
+        loc_id = f"loc_{uuid.uuid4().hex[:12]}"
+        cursor.execute("""
+            INSERT INTO device_locations (id, device_id, user_id, user_name, latitude, longitude, accuracy, formatted_address, city, country, updated_at, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (loc_id, device_id, user_id, user_name, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
+
+    # Persist every ping into location_history for chronological path tracing (never overwritten)
     hist_id = f"hist_{uuid.uuid4().hex[:12]}"
     cursor.execute("""
     INSERT INTO location_history (id, device_id, user_id, latitude, longitude, accuracy, formatted_address, city, country, created_at, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (hist_id, device_id, user_id, lat, lon, acc, formatted_address, city, country, iso_updated_at, int(ts)))
 
+    cursor.execute("""
+    SELECT COUNT(*) as cnt FROM location_history 
+    WHERE (user_id = ? AND ? != '') OR device_id = ?
+    """, (user_id or "", user_id or "", device_id))
+    cnt_row = cursor.fetchone()
+    total_checkpoints = cnt_row["cnt"] if cnt_row else 1
+
     conn.commit()
     conn.close()
 
-    logger.info(f"Location updated for device {device_id} ({user_name}): {city}, {country} [{lat:.4f}, {lon:.4f}]")
+    logger.info(f"Location updated for device {device_id} ({user_name}): {city}, {country} [{lat:.4f}, {lon:.4f}] (checkpoints: {total_checkpoints})")
 
     # Real-time WebSocket broadcast for active dashboard map watchers
     await ws_manager.broadcast_all({
@@ -794,7 +819,8 @@ async def ingest_device_location(data: dict):
         "formattedAddress": formatted_address,
         "city": city,
         "country": country,
-        "updatedAt": iso_updated_at
+        "updatedAt": iso_updated_at,
+        "checkpointCount": total_checkpoints
     })
 
     return {
@@ -808,7 +834,8 @@ async def ingest_device_location(data: dict):
         "formattedAddress": formatted_address,
         "city": city,
         "country": country,
-        "updatedAt": iso_updated_at
+        "updatedAt": iso_updated_at,
+        "checkpointCount": total_checkpoints
     }
 
 @router.get("/api/devices/location")
@@ -816,10 +843,24 @@ def get_device_locations():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT dl.*, d.device_model, d.last_sync_timestamp, d.is_blocked
-    FROM device_locations dl
-    LEFT JOIN devices d ON dl.device_id = d.device_id
-    ORDER BY dl.timestamp DESC
+    WITH RankedLocations AS (
+        SELECT 
+            dl.*,
+            d.device_model,
+            d.last_sync_timestamp,
+            d.is_blocked,
+            COALESCE(NULLIF(dl.user_id, ''), NULLIF(dl.user_name, ''), dl.device_id) AS group_key,
+            ROW_NUMBER() OVER (
+                PARTITION BY COALESCE(NULLIF(dl.user_id, ''), NULLIF(dl.user_name, ''), dl.device_id)
+                ORDER BY dl.timestamp DESC
+            ) AS rn,
+            (SELECT COUNT(*) FROM location_history lh 
+             WHERE (lh.user_id = dl.user_id AND dl.user_id IS NOT NULL AND dl.user_id != '') 
+                OR lh.device_id = dl.device_id) AS checkpoint_count
+        FROM device_locations dl
+        LEFT JOIN devices d ON dl.device_id = d.device_id
+    )
+    SELECT * FROM RankedLocations WHERE rn = 1 ORDER BY timestamp DESC
     """)
     rows = cursor.fetchall()
     conn.close()
@@ -839,7 +880,8 @@ def get_device_locations():
             "city": r["city"] or "Unknown City",
             "country": r["country"] or "Unknown Country",
             "updatedAt": r["updated_at"],
-            "timestamp": r["timestamp"]
+            "timestamp": r["timestamp"],
+            "checkpointCount": int(r["checkpoint_count"] or 1)
         })
     return results
 
@@ -1008,3 +1050,40 @@ def get_device_location_history(
         "timeframe": tf,
         "points": points
     }
+
+@router.delete("/api/devices/location/history")
+async def delete_device_location_history(
+    userId: Optional[str] = None,
+    deviceId: Optional[str] = None,
+    clearAll: Optional[bool] = False
+):
+    conn = get_db()
+    cursor = conn.cursor()
+    target_user = (userId or "").strip()
+    target_dev = (deviceId or "").strip()
+
+    if clearAll or (not target_user and not target_dev):
+        cursor.execute("DELETE FROM location_history")
+        cursor.execute("DELETE FROM device_locations")
+        deleted_msg = "All location telemetry & history cleared"
+    else:
+        cursor.execute("""
+            DELETE FROM location_history 
+            WHERE (user_id = ? AND ? != '') OR device_id = ?
+        """, (target_user, target_user, target_dev))
+        cursor.execute("""
+            DELETE FROM device_locations 
+            WHERE (user_id = ? AND ? != '') OR device_id = ?
+        """, (target_user, target_user, target_dev))
+        deleted_msg = f"Location history cleared for user={target_user}, dev={target_dev}"
+
+    conn.commit()
+    conn.close()
+
+    await ws_manager.broadcast_all({
+        "type": "LOCATION_HISTORY_CLEARED",
+        "userId": target_user,
+        "deviceId": target_dev
+    })
+
+    return {"status": "success", "message": deleted_msg}

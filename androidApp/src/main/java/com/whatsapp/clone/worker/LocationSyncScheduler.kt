@@ -9,7 +9,7 @@ object LocationSyncScheduler {
     private const val TAG = "LocationSyncScheduler"
     const val PREFS_NAME = "vibesync_location_prefs"
     const val KEY_SYNC_INTERVAL_MINUTES = "sync_interval_minutes"
-    const val DEFAULT_INTERVAL_MINUTES: Long = 60L
+    const val DEFAULT_INTERVAL_MINUTES: Long = 1L
 
     val INTERVAL_OPTIONS = listOf(15L, 30L, 60L, 180L, 360L)
 

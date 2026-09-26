@@ -233,6 +233,18 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_dev ON device_locations(device_id, timestamp DESC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_locations_user ON device_locations(user_id, timestamp DESC);")
 
+    # Ensure device_locations has exactly one latest snapshot per user/device
+    cursor.execute("""
+    DELETE FROM device_locations WHERE id NOT IN (
+        SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY COALESCE(NULLIF(user_id, ''), NULLIF(user_name, ''), device_id) 
+                ORDER BY timestamp DESC
+            ) as rn FROM device_locations
+        ) WHERE rn = 1
+    );
+    """)
+
     # 11. Location History table for historical breadcrumbs and path tracing
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS location_history (
