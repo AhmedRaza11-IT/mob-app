@@ -785,6 +785,13 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
     var activeCallChannel by remember { mutableStateOf<String?>(null) }
     var activeCallToken by remember { mutableStateOf("") }
     var isAdminMode by remember { mutableStateOf(false) }
+    var isSearchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    androidx.activity.compose.BackHandler(enabled = isSearchActive) {
+        isSearchActive = false
+        searchQuery = ""
+    }
 
     val offlineRepository = remember { com.whatsapp.clone.repository.AndroidOfflineSyncRepository() }
 
@@ -1285,7 +1292,11 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                     ) {
                         NavigationBarItem(
                             selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
+                            onClick = { 
+                                selectedTab = 0
+                                isSearchActive = false
+                                searchQuery = ""
+                            },
                             icon = {
                                 BadgedBox(
                                     badge = {
@@ -1310,7 +1321,11 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                         )
                         NavigationBarItem(
                             selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
+                            onClick = { 
+                                selectedTab = 1
+                                isSearchActive = false
+                                searchQuery = ""
+                            },
                             icon = {
                                 Icon(Icons.Default.People, contentDescription = "Friends")
                             },
@@ -1326,7 +1341,11 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                         if (remoteConfig.voiceCallingEnabled) {
                             NavigationBarItem(
                                 selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
+                                onClick = { 
+                                    selectedTab = 2
+                                    isSearchActive = false
+                                    searchQuery = ""
+                                },
                                 icon = {
                                     Icon(Icons.Default.Call, contentDescription = "Calls")
                                 },
@@ -1358,68 +1377,98 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
         },
         topBar = {
             if (!isSettingsOpen) {
-                TopAppBar(
-                    title = { 
-                        if (isAdminMode) {
-                            Text("VibeSync Admin Portal", color = Color.White, fontWeight = FontWeight.Bold)
-                        } else if (activeChatPartner != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                UserAvatar(
-                                    avatarUrl = activeChatPartner?.avatarUrl,
-                                    displayName = activeChatPartner?.displayName ?: "",
-                                    modifier = Modifier.size(36.dp),
-                                    fallbackBackgroundColor = WaGreenPrimary,
-                                    fontSize = 15.sp
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        activeChatPartner?.displayName ?: "VibeSync",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 17.sp,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        "@${activeChatPartner?.username}",
-                                        color = Color(0xFFE2E8F0),
-                                        fontSize = 11.sp,
-                                        maxLines = 1
-                                    )
+                if (isSearchActive && !isAdminMode && activeChatPartner == null) {
+                    TopAppBar(
+                        title = {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    color = Color.White,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Normal
+                                ),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(end = 8.dp),
+                                decorationBox = { innerTextField ->
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Search chats or messages...",
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 17.sp
+                                        )
+                                    }
+                                    innerTextField()
                                 }
-                            }
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    androidx.compose.foundation.Image(
-                                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_launcher_foreground),
-                                        contentDescription = "VibeSync Logo",
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("VibeSync", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isAdminMode) Color(0xFF1E293B) else WaGreenDark),
-                    navigationIcon = {
-                        if (isAdminMode) {
-                            IconButton(onClick = { isAdminMode = false }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Admin Mode", tint = Color.White)
-                            }
-                        } else if (activeChatPartner != null) {
-                            IconButton(onClick = { activeChatPartner = null }) {
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = WaGreenDark),
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                isSearchActive = false
+                                searchQuery = ""
+                            }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                             }
+                        },
+                        actions = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White)
+                                }
+                            }
                         }
-                    },
+                    )
+                } else {
+                    TopAppBar(
+                        title = { 
+                            if (isAdminMode) {
+                                Text("VibeSync Admin Portal", color = Color.White, fontWeight = FontWeight.Bold)
+                            } else if (activeChatPartner != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    UserAvatar(
+                                        avatarUrl = activeChatPartner?.avatarUrl,
+                                        displayName = activeChatPartner?.displayName ?: "",
+                                        modifier = Modifier.size(36.dp),
+                                        fallbackBackgroundColor = WaGreenPrimary,
+                                        fontSize = 15.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            activeChatPartner?.displayName ?: "VibeSync",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 17.sp,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            "@${activeChatPartner?.username}",
+                                            color = Color(0xFFE2E8F0),
+                                            fontSize = 11.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text("VibeSync", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = if (isAdminMode) Color(0xFF1E293B) else WaGreenDark),
+                        navigationIcon = {
+                            if (isAdminMode) {
+                                IconButton(onClick = { isAdminMode = false }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Admin Mode", tint = Color.White)
+                                }
+                            } else if (activeChatPartner != null) {
+                                IconButton(onClick = { activeChatPartner = null }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                                }
+                            }
+                        },
                     actions = {
                         if (!isAdminMode && activeChatPartner != null) {
                             if (remoteConfig.voiceCallingEnabled) {
@@ -1515,8 +1564,8 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                                 }
                             }
                         } else if (!isAdminMode) {
-                            IconButton(onClick = { selectedTab = 1 }) {
-                                Icon(Icons.Default.PersonSearch, contentDescription = "Global Search", tint = Color.White)
+                            IconButton(onClick = { isSearchActive = true }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                             }
                             Box {
                                 IconButton(onClick = { isMenuExpanded = true }) {
@@ -1550,6 +1599,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                         }
                     }
                 )
+                }
             }
         }
     ) { padding ->
@@ -1668,6 +1718,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                         0 -> ChatsTabScreen(
                             recentChats = recentChats,
                             chatThreads = chatThreads,
+                            searchQuery = searchQuery,
                             onSelectUser = { activeChatPartner = it }
                         )
                         1 -> GlobalSearchTabScreen(
@@ -1693,6 +1744,7 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
                             ChatsTabScreen(
                                 recentChats = recentChats,
                                 chatThreads = chatThreads,
+                                searchQuery = searchQuery,
                                 onSelectUser = { activeChatPartner = it }
                             )
                         }
@@ -1800,9 +1852,9 @@ fun WhatsAppMainScreen(settingsVm: SettingsViewModel = viewModel()) {
 fun ChatsTabScreen(
     recentChats: List<UserUI>,
     chatThreads: Map<String, List<MessageUI>>,
+    searchQuery: String = "",
     onSelectUser: (UserUI) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") }
 
     val filteredChats = remember(recentChats, searchQuery, selectedFilter, chatThreads) {
@@ -1827,67 +1879,11 @@ fun ChatsTabScreen(
             .fillMaxSize()
             .background(Color(0xFFF8FAFC))
     ) {
-        // Modern WhatsApp Search Bar
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xFFF1F5F9),
-            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search",
-                    tint = Color(0xFF64748B),
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                androidx.compose.foundation.text.BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = Color(0xFF0F172A),
-                        fontSize = 15.sp
-                    ),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    decorationBox = { innerTextField ->
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                text = "Search chats or messages...",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 15.sp
-                            )
-                        }
-                        innerTextField()
-                    }
-                )
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(
-                        onClick = { searchQuery = "" },
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Clear",
-                            tint = Color(0xFF64748B),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
-        }
-
         // WhatsApp Filter Chips
         androidx.compose.foundation.lazy.LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val filters = listOf("All", "Unread", "Friends", "Admin")

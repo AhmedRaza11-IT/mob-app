@@ -254,7 +254,7 @@ object AdminApiClient {
 
     // 6. Messaging
     suspend fun fetchMessages(userId: String): List<AdminChatMessage> = withContext(Dispatchers.IO) {
-        val encodedId = URLEncoder.encode(userId, "UTF-8")
+        val encodedId = URLEncoder.encode(userId.trim(), "UTF-8").replace("+", "%20")
         val res = executeRequest("/api/admin/messages/$encodedId", "GET")
         val arr = JSONArray(res)
         val list = mutableListOf<AdminChatMessage>()
@@ -291,7 +291,7 @@ object AdminApiClient {
 
     suspend fun getAdminAlias(userId: String): String = withContext(Dispatchers.IO) {
         try {
-            val encoded = URLEncoder.encode(userId.trim(), "UTF-8")
+            val encoded = URLEncoder.encode(userId.trim(), "UTF-8").replace("+", "%20")
             val res = executeRequest("/api/admin/alias/$encoded", "GET")
             val obj = JSONObject(res)
             obj.optString("admin_alias", "Admin")

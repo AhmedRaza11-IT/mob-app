@@ -2,6 +2,7 @@ import os
 import time
 import json
 import uuid
+import urllib.parse
 from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Request
 
@@ -62,8 +63,9 @@ def set_admin_alias_db(user_key: str, alias: str):
 
 @router.get("/api/admin/alias/{user_id}")
 def get_alias_endpoint(user_id: str):
-    alias = get_admin_alias(user_id)
-    return {"user_id": user_id, "admin_alias": alias}
+    clean_user = urllib.parse.unquote_plus(user_id).strip()
+    alias = get_admin_alias(clean_user)
+    return {"user_id": clean_user, "admin_alias": alias}
 
 @router.post("/api/admin/alias")
 async def set_alias_endpoint(data: dict):
@@ -72,19 +74,21 @@ async def set_alias_endpoint(data: dict):
     if not user_id or not alias:
         raise HTTPException(status_code=400, detail="Missing user_id or admin_alias")
     
-    clean_alias = alias.strip()
+    clean_user = urllib.parse.unquote_plus(str(user_id)).strip()
+    clean_alias = str(alias).strip()
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (user_id, user_id))
+    cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (clean_user, clean_user))
     u_row = cursor.fetchone()
-    target_id = u_row["id"] if u_row else user_id
-    target_username = u_row["username"] if u_row else user_id
+    target_id = u_row["id"] if u_row else clean_user
+    target_username = u_row["username"] if u_row else clean_user
     conn.close()
 
-    # Save for both ID and username
+    # Save for ID, username, and raw input
     set_admin_alias_db(target_id, clean_alias)
     if target_username != target_id:
         set_admin_alias_db(target_username, clean_alias)
+    set_admin_alias_db(clean_user, clean_alias)
 
     # Broadcast live WebSocket event to user device so their UI updates immediately
     ws_event = {
@@ -105,23 +109,47 @@ async def set_alias_endpoint(data: dict):
 
 @router.get("/api/admin/messages/{user_id}")
 def get_admin_user_messages(user_id: str):
+    clean_user = urllib.parse.unquote_plus(user_id).strip()
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (user_id, user_id))
+    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (clean_user, clean_user))
     user_row = cursor.fetchone()
-    target_id = user_row["id"] if user_row else user_id
+    target_id = user_row["id"] if user_row else clean_user
+    target_username = user_row["username"] if user_row else clean_user
 
-    p1, p2 = sorted(["admin", target_id])
-    cursor.execute("SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)", (p1, p2, p2, p1))
-    conv_row = cursor.fetchone()
+    candidate_ids = list(dict.fromkeys(filter(None, [target_id, target_username, clean_user])))
 
-    if not conv_row:
-        conn.close()
-        return []
+    # Find conversation between admin and any candidate identifier
+    conv_ids = []
+    for cand in candidate_ids:
+        p1, p2 = sorted(["admin", cand])
+        cursor.execute(
+            "SELECT id FROM conversations WHERE (participant_one = ? AND participant_two = ?) OR (participant_one = ? AND participant_two = ?)",
+            (p1, p2, p2, p1)
+        )
+        for crow in cursor.fetchall():
+            cid = crow["id"]
+            if cid not in conv_ids:
+                conv_ids.append(cid)
 
-    conv_id = conv_row["id"]
-    cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC", (conv_id,))
+    # Query all messages matching either conv_ids OR direct sender/recipient
+    placeholders_cand = ','.join('?' * len(candidate_ids))
+    params = []
+    where_clauses = [
+        f"(sender_id = 'admin' AND recipient_id IN ({placeholders_cand}))",
+        f"(sender_id IN ({placeholders_cand}) AND recipient_id = 'admin')"
+    ]
+    params.extend(candidate_ids)
+    params.extend(candidate_ids)
+
+    if conv_ids:
+        placeholders_conv = ','.join('?' * len(conv_ids))
+        where_clauses.append(f"conversation_id IN ({placeholders_conv})")
+        params.extend(conv_ids)
+
+    query = f"SELECT * FROM messages WHERE ({' OR '.join(where_clauses)}) ORDER BY created_at ASC"
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
 
@@ -146,14 +174,15 @@ async def admin_send_message(data: dict):
     if not recipient_id or not content:
         raise HTTPException(status_code=400, detail="Missing recipient_id or content")
 
+    clean_recipient = urllib.parse.unquote_plus(str(recipient_id)).strip()
     conn = get_db()
     cursor = conn.cursor()
     now = int(time.time() * 1000)
 
-    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (recipient_id, recipient_id))
+    cursor.execute("SELECT * FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (clean_recipient, clean_recipient))
     user_row = cursor.fetchone()
-    target_id = user_row["id"] if user_row else recipient_id
-    target_username = user_row["username"] if user_row else recipient_id
+    target_id = user_row["id"] if user_row else clean_recipient
+    target_username = user_row["username"] if user_row else clean_recipient
 
     sender_display_name = data.get("sender_display_name")
     if not sender_display_name or not str(sender_display_name).strip():
@@ -163,6 +192,7 @@ async def admin_send_message(data: dict):
         set_admin_alias_db(target_id, sender_display_name)
         if target_username != target_id:
             set_admin_alias_db(target_username, sender_display_name)
+        set_admin_alias_db(clean_recipient, sender_display_name)
 
     sender_id = "admin"
     p1, p2 = sorted([sender_id, target_id])
@@ -329,13 +359,14 @@ async def admin_end_call(data: dict):
 
 @router.get("/api/conversations/{user_id}")
 def get_conversations(user_id: str):
+    clean_user = urllib.parse.unquote_plus(user_id).strip()
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (user_id, user_id))
+    cursor.execute("SELECT id, username FROM users WHERE id = ? OR LOWER(username) = LOWER(?)", (clean_user, clean_user))
     u_row = cursor.fetchone()
-    u_id = u_row["id"] if u_row else user_id
-    u_name = u_row["username"] if u_row else user_id
+    u_id = u_row["id"] if u_row else clean_user
+    u_name = u_row["username"] if u_row else clean_user
 
     cursor.execute("""
         SELECT c.*,

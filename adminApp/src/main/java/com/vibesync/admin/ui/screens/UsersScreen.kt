@@ -3,9 +3,11 @@ package com.vibesync.admin.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -147,7 +149,9 @@ fun UsersScreen(
             // Filter Chips Row
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf("ALL" to "All Users", "ACTIVE" to "Active", "HAS_DEVICE" to "Device Linked", "BANNED" to "Banned").forEach { (key, label) ->
@@ -444,16 +448,21 @@ fun UserCard(
 
             // Action Buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
                     onClick = onOpenChat,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandPurpleSurface),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, BrandPurpleLight),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text("💬 Chat", fontSize = 11.sp, color = BrandPurple, fontWeight = FontWeight.SemiBold)
                 }
@@ -462,9 +471,11 @@ fun UserCard(
                     onClick = onStartVoiceCall,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldBg),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldBorder),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text("📞 Call", fontSize = 11.sp, color = EmeraldSuccess, fontWeight = FontWeight.SemiBold)
                 }
@@ -473,9 +484,11 @@ fun UserCard(
                     onClick = onStartVideoCall,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SkyBg),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, SkyBorder),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text("📹 Video", fontSize = 11.sp, color = SkyInfo, fontWeight = FontWeight.SemiBold)
                 }
@@ -484,9 +497,11 @@ fun UserCard(
                     onClick = onEdit,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Slate100),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Slate200),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text("✏ Edit", fontSize = 11.sp, color = Slate700, fontWeight = FontWeight.Medium)
                 }
@@ -495,9 +510,11 @@ fun UserCard(
                     onClick = onToggleBan,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = if (user.isBanned) EmeraldBg else AmberBg),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, if (user.isBanned) EmeraldBorder else AmberBorder),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text(
                         if (user.isBanned) "Unban" else "Ban",
@@ -511,9 +528,11 @@ fun UserCard(
                     onClick = onDelete,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = RedBg),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, RedBorder),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
                 ) {
                     Text("🗑", fontSize = 11.sp, color = RedDelete)
                 }
